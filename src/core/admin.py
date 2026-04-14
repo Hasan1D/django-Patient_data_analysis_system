@@ -88,9 +88,20 @@ class PatientAdmin (admin.ModelAdmin):
     
 @admin.register(Disease)
 class DiseaseAdmin (admin.ModelAdmin):
-    list_display = ('id' , 'name' , 'type' , 'risk_level' , 'infection_score')
+    list_display = (
+        'id',
+        'disease_code',
+        'name',
+        'type',
+        'policy_profile',
+        'risk_level',
+        'infection_score',
+        'high_priority',
+        'rare_disease',
+        'is_reference',
+    )
     search_fields = ('name' , 'disease_code')
-    list_filter = ('type' , 'risk_level')
+    list_filter = ('type' , 'policy_profile', 'risk_level', 'high_priority', 'rare_disease', 'is_reference', 'source_name')
     
 
 @admin.register(Visit)
@@ -110,6 +121,28 @@ class GeoDataAdmin (admin.ModelAdmin):
 class GeoClusterAdmin (admin.ModelAdmin):
     list_display = ('id' , 'disease' , 'case_count' , 'risk_level' , 'generated_at')
     list_filter = ('risk_level' , 'disease')
+
+
+@admin.register(Report)
+class ReportAdmin(admin.ModelAdmin):
+    list_display = (
+        'id',
+        'disease',
+        'trigger_visit',
+        'alert_level',
+        'risk_score',
+        'current_case_count',
+        'previous_case_count',
+        'status',
+        'generated_at',
+    )
+    search_fields = (
+        'disease__name',
+        'disease__disease_code',
+        'trigger_visit__id',
+        'summary',
+    )
+    list_filter = ('alert_level', 'status', 'generated_at')
 
 
 @admin.register(MedicalHistory)
@@ -135,3 +168,10 @@ class chronicDiseaseAdmin (admin.ModelAdmin):
 @admin.register(SurgicalHistory)
 class SurgicalHistoryAdmin (admin.ModelAdmin):
     list_display = ('id' , 'surgery_description' , 'surgery_date' , 'has_metal_plates')
+
+
+@admin.register(LabTest)
+class LabTestAdmin(admin.ModelAdmin):
+    list_display = ('id', 'visit', 'test_code', 'test_name', 'test_date')
+    search_fields = ('test_code', 'test_name', 'visit__patient__name')
+    list_filter = ('test_date',)

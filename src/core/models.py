@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
@@ -55,13 +57,35 @@ class Patient(models.Model):
 
 
 class Disease(models.Model):
-    disease_code = models.CharField(max_length=50)       
+    POLICY_PROFILE_CHOICES = [
+        ("general", "General"),
+        ("high_priority", "High Priority"),
+        ("rare", "Rare"),
+        ("cluster_sensitive", "Cluster Sensitive"),
+        ("surge_sensitive", "Surge Sensitive"),
+        ("environmental_signal", "Environmental Signal"),
+    ]
+
+    disease_code = models.CharField(max_length=50, unique=True, db_index=True)
     name = models.CharField(max_length=255)       
     type = models.CharField(max_length=100)       
     transmission_vector = models.CharField(max_length=100)
     symptoms = models.TextField()
     risk_level = models.IntegerField()
     infection_score = models.FloatField()
+    source_record_id = models.PositiveIntegerField(null=True, blank=True)
+    source_name = models.CharField(max_length=100, blank=True, default="")
+    is_reference = models.BooleanField(default=False)
+    policy_profile = models.CharField(
+        max_length=50,
+        choices=POLICY_PROFILE_CHOICES,
+        default="general",
+    )
+    high_priority = models.BooleanField(default=False)
+    rare_disease = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("name",)
     
     
     def __str__(self):
@@ -110,24 +134,66 @@ class GeoCluster(models.Model):
     
     def __str__(self):
         return f"{self.disease.name} Cluster ({self.case_count} case)"
-    
-    
-    
+
+
 class Report(models.Model):
+    ALERT_LEVEL_CHOICES = [
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
+        ("critical", "Critical"),
+    ]
+    STATUS_CHOICES = [
+        ("new", "New"),
+        ("reviewed", "Reviewed"),
+        ("resolved", "Resolved"),
+        ("archived", "Archived"),
+    ]
+
     generated_at = models.DateTimeField(auto_now_add=True)
-    region = models.CharField(max_length=255)
-    region_type = models.CharField(max_length=50)
-    disease = models.ForeignKey(Disease , on_delete=models.CASCADE)
+    disease = models.ForeignKey(Disease , on_delete=models.CASCADE, related_name="reports")
+    trigger_visit = models.ForeignKey(
+        Visit,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reports",
+    )
+    analysis_period_start = models.DateField(default=date.today)
+    analysis_period_end = models.DateField(default=date.today)
+    alert_level = models.CharField(max_length=20, choices=ALERT_LEVEL_CHOICES, default="low")
     summary = models.TextField()
     risk_score = models.FloatField()
-    spread_map_url =models.URLField()
-    
-    
+    nearby_case_count = models.PositiveIntegerField(default=0)
+    current_case_count = models.PositiveIntegerField(default=0)
+    previous_case_count = models.PositiveIntegerField(default=0)
+    growth_rate = models.FloatField(default=0)
+    surge_ratio = models.FloatField(default=0)
+    reasons = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="new")
+
+    class Meta:
+        ordering = ("-generated_at",)
+
     def __str__(self):
-        return f"Report {self.id} - {self.region}"
-    
-    
-    
+        return f"Report {self.id} - {self.disease.name} - {self.alert_level}"
+
+
+class LabTest(models.Model):
+    visit = models.ForeignKey(Visit, on_delete=models.CASCADE)
+    test_code = models.CharField(max_length=100)
+    test_name = models.CharField(max_length=255)
+    result = models.TextField()
+    test_date = models.DateTimeField()
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "LAB_TESTS"
+
+    def __str__(self):
+        return f"{self.test_name} - Visit {self.visit_id}"
+
+
 class MedicalHistory(models.Model):
     patient = models.ForeignKey(Patient , on_delete=models.CASCADE)
     has_surgical_metal_plates = models.BooleanField(default=False)

@@ -20,7 +20,7 @@ from rest_framework.routers import DefaultRouter
 from core.views import (
     PatientViewSet , DoctorViewSet , HospitalViewSet ,
     DiseaseViewSet ,VisitViewSet , GeoDataViewSet , 
-    GeoClusterViewSet , ReportViewSet )
+    GeoClusterViewSet , ReportViewSet , LabTestViewSet )
 
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -37,6 +37,7 @@ router.register(r'visits' , VisitViewSet)
 router.register(r'geodata' , GeoDataViewSet)
 router.register(r'geoclusters' , GeoClusterViewSet)
 router.register(r'reports', ReportViewSet)
+router.register(r'lab-tests', LabTestViewSet)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
