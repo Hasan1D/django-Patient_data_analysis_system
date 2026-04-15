@@ -8,15 +8,57 @@ RARE_REFERENCE_CODES: set[str] = {
 }
 
 HIGH_PRIORITY_REFERENCE_CODES: set[str] = {
-    "1A00",      # Cholera
     "1F03",      # Measles
     "1E71",      # Mpox
     "1D65",      # SARS
     "1D64",      # MERS
     "1D60.01",   # Ebola
     "1C1C.0",    # Meningococcal meningitis
+    "1C82",      # Rabies
+    "1D2Z",      # Dengue
+    "1F4Z",      # Malaria
+    "1D47",      # Yellow fever
+    "1D40",      # Chikungunya
+    "1D48",      # Zika
+    "1B1Z",      # Tuberculosis
+    "1C12",      # Pertussis
+}
+
+CLUSTER_SENSITIVE_REFERENCE_CODES: set[str] = {
+    "1A00",      # Cholera
     "1A07",      # Typhoid fever
+    "1A09.0",    # Salmonella enteritis
+    "1A02",      # Shigella
+    "1A06",      # Campylobacter
+    "1A31",      # Giardiasis
+    "1A36",      # Amoebiasis
+    "1C1A.Z",    # Listeriosis
     "1E50.0",    # Viral hepatitis A
+}
+
+SURGE_SENSITIVE_REFERENCE_CODES: set[str] = {
+    "1E32",      # Influenza
+    "1C12",      # Pertussis
+    "1B1Z",      # Tuberculosis
+    "CA40.Z",    # Pneumonia
+    "CA41.Z",    # Acute bronchiolitis
+    "CA01",      # Acute sinusitis
+}
+
+NON_OUTBREAK_GASTRO_REFERENCE_CODES: set[str] = {
+    "DA22.Z",    # GERD
+    "DD70",      # Crohn disease
+    "DD71.Z",    # Ulcerative colitis
+}
+
+ENVIRONMENTAL_RESPIRATORY_REFERENCE_CODES: set[str] = {
+    "CA23",      # Asthma
+    "CA22.Z",    # COPD
+    "CA20.1",    # Chronic bronchitis
+    "CA24",      # Bronchiectasis
+    "CA21.Y",    # Emphysema
+    "CB03.4",    # Idiopathic pulmonary fibrosis
+    "MD31",      # Pleurisy
 }
 
 WATER_OR_FOOD_VECTOR_MARKERS: tuple[str, ...] = (
@@ -59,16 +101,29 @@ def classify_reference_disease(
 
     if rare_disease:
         policy_profile = "rare"
+    elif normalized_code in NON_OUTBREAK_GASTRO_REFERENCE_CODES:
+        policy_profile = "general"
+    elif normalized_code in ENVIRONMENTAL_RESPIRATORY_REFERENCE_CODES:
+        policy_profile = "environmental_signal"
+    elif normalized_type == "epidemic_infectious" and normalized_code in HIGH_PRIORITY_REFERENCE_CODES:
+        policy_profile = "high_priority"
+        high_priority = True
     elif normalized_type == "high_alert_notifiable":
         policy_profile = "high_priority"
         high_priority = True
     elif normalized_type == "cancer_environmental_signal":
         policy_profile = "environmental_signal"
-    elif normalized_type == "gastrointestinal" or any(
+    elif normalized_code in CLUSTER_SENSITIVE_REFERENCE_CODES or (
+        normalized_type == "gastrointestinal"
+        and normalized_code not in NON_OUTBREAK_GASTRO_REFERENCE_CODES
+    ) or any(
         marker in normalized_vector for marker in WATER_OR_FOOD_VECTOR_MARKERS
     ):
         policy_profile = "cluster_sensitive"
-    elif normalized_type == "respiratory" or any(
+    elif normalized_code in SURGE_SENSITIVE_REFERENCE_CODES or (
+        normalized_type == "respiratory"
+        and normalized_code not in ENVIRONMENTAL_RESPIRATORY_REFERENCE_CODES
+    ) or any(
         marker in normalized_vector for marker in RESPIRATORY_VECTOR_MARKERS
     ):
         policy_profile = "surge_sensitive"
@@ -94,4 +149,3 @@ def classify_reference_disease(
         "high_priority": high_priority,
         "rare_disease": rare_disease,
     }
-

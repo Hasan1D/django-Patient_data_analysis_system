@@ -93,14 +93,18 @@ class GeoDataSerializer(serializers.ModelSerializer):
 
 
 class GeoClusterSerializer(serializers.ModelSerializer):
+    disease_name = serializers.CharField(source="disease.name", read_only=True)
+    disease_code = serializers.CharField(source="disease.disease_code", read_only=True)
+
     class Meta:
         model = GeoCluster
         fields = "__all__"
-        read_only_fields = ("generated_at",)
+        read_only_fields = ("generated_at", "disease_name", "disease_code")
 
 
 class ReportSerializer(serializers.ModelSerializer):
     disease_name = serializers.CharField(source="disease.name", read_only=True)
+    disease_code = serializers.CharField(source="disease.disease_code", read_only=True)
     trigger_visit_diagnosis_date = serializers.DateField(
         source="trigger_visit.diagnosis_date",
         read_only=True,
@@ -109,7 +113,12 @@ class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
         fields = "__all__"
-        read_only_fields = ("generated_at", "disease_name", "trigger_visit_diagnosis_date")
+        read_only_fields = (
+            "generated_at",
+            "disease_name",
+            "disease_code",
+            "trigger_visit_diagnosis_date",
+        )
 
     def validate(self, attrs):
         analysis_period_start = attrs.get(

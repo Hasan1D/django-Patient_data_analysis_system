@@ -1,5 +1,9 @@
 from datetime import date
+from pathlib import Path
+import csv
+import shutil
 from tempfile import NamedTemporaryFile
+from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -9,14 +13,16 @@ from rest_framework.test import APITestCase
 
 from .services import DiseaseAlertPolicy, OutbreakAnalysis, TrendSnapshot, VisitOutbreakContext
 from .services.alert_policies import get_policy_for_disease
+from .services.anomaly_detection import detect_temporal_anomalies
 from .services.cluster_service import ALERT_LEVEL_TO_RISK_LEVEL, create_cluster_from_analysis
+from .services.dbscan_hotspots import detect_dbscan_clusters, persist_dbscan_clusters
 from .services.disease_reference import REFERENCE_SOURCE_NAME, classify_reference_disease
 from .services.outbreak_engine import evaluate_visit_outbreak
 from .services.report_service import create_report_from_analysis
 from .services.spatial import distance_km, find_nearby_cases
 from .services.trend import build_trend_snapshot, count_cases_for_window
 from .serializers import DiseaseSerializer, ReportSerializer, UserSerializer
-from .models import Disease, Doctor, GeoCluster, GeoData, Hospital, Patient, Report, Visit
+from .models import Disease, Doctor, GeoCluster, GeoData, Hospital, LabTest, Patient, Report, Visit
 
 
 User = get_user_model()
@@ -883,8 +889,49 @@ class AlertPolicyServiceTests(APITestCase):
         self.assertEqual(policy.critical_case_threshold, 1)
         self.assertEqual(policy.rarity_weight, 3.0)
 
+    def test_influenza_icd11_policy_prefers_surge_thresholds(self):
+        policy = get_policy_for_disease(
+            disease_code="1E32",
+            risk_level=4,
+            infection_score=0.67,
+            policy_profile="surge_sensitive",
+        )
+
+        self.assertEqual(policy.lookback_days, 7)
+        self.assertEqual(policy.baseline_window_days, 21)
+        self.assertEqual(policy.cluster_case_threshold, 4)
+        self.assertEqual(policy.critical_case_threshold, 7)
+
+    def test_tuberculosis_icd11_policy_uses_longer_observation_window(self):
+        policy = get_policy_for_disease(
+            disease_code="1B1Z",
+            risk_level=4,
+            infection_score=0.79,
+            high_priority=True,
+            policy_profile="surge_sensitive",
+        )
+
+        self.assertTrue(policy.high_priority)
+        self.assertEqual(policy.lookback_days, 30)
+        self.assertEqual(policy.baseline_window_days, 60)
+        self.assertEqual(policy.cluster_case_threshold, 2)
+
 
 class DiseaseReferenceClassificationTests(APITestCase):
+    def test_classify_reference_disease_marks_measles_as_high_priority_profile(self):
+        classification = classify_reference_disease(
+            disease_code="1F03",
+            name="Measles",
+            disease_type="epidemic_infectious",
+            transmission_vector="airborne_droplet",
+            risk_level=4,
+            infection_score=0.92,
+        )
+
+        self.assertEqual(classification["policy_profile"], "high_priority")
+        self.assertTrue(classification["high_priority"])
+        self.assertFalse(classification["rare_disease"])
+
     def test_classify_reference_disease_marks_smallpox_as_rare_high_priority(self):
         classification = classify_reference_disease(
             disease_code="1E70",
@@ -911,6 +958,32 @@ class DiseaseReferenceClassificationTests(APITestCase):
         )
 
         self.assertEqual(classification["policy_profile"], "cluster_sensitive")
+        self.assertFalse(classification["rare_disease"])
+
+    def test_classify_reference_disease_keeps_noninfectious_gastro_cases_general(self):
+        classification = classify_reference_disease(
+            disease_code="DA22.Z",
+            name="Gastro-oesophageal reflux disease, unspecified",
+            disease_type="gastrointestinal",
+            transmission_vector="N/A",
+            risk_level=2,
+            infection_score=0.05,
+        )
+
+        self.assertEqual(classification["policy_profile"], "general")
+        self.assertFalse(classification["high_priority"])
+
+    def test_classify_reference_disease_marks_chronic_respiratory_signals_as_environmental(self):
+        classification = classify_reference_disease(
+            disease_code="CA23",
+            name="Asthma",
+            disease_type="respiratory",
+            transmission_vector="air_pollution_smoke_exposure",
+            risk_level=3,
+            infection_score=0.1,
+        )
+
+        self.assertEqual(classification["policy_profile"], "environmental_signal")
         self.assertFalse(classification["rare_disease"])
 
 
@@ -944,6 +1017,94 @@ class DiseaseImportCommandTests(APITestCase):
 
         self.assertEqual(Disease.objects.count(), 2)
         self.assertEqual(Disease.objects.get(disease_code="1A00").name, "Cholera updated")
+
+
+class AIDatasetExportCommandTests(CoreAPITestCase):
+    def test_export_ai_dataset_command_writes_visit_and_daily_datasets(self):
+        Report.objects.create(
+            disease=self.disease_a,
+            trigger_visit=self.visit_a1,
+            analysis_period_start=date(2026, 4, 1),
+            analysis_period_end=date(2026, 4, 2),
+            alert_level="high",
+            summary="Active measles alert",
+            risk_score=55.0,
+            nearby_case_count=1,
+            current_case_count=2,
+            previous_case_count=1,
+            growth_rate=1.0,
+            surge_ratio=2.0,
+            reasons=["cluster"],
+            status="new",
+        )
+        GeoCluster.objects.create(
+            center_lat=33.5000,
+            center_long=36.2500,
+            radius=1.5,
+            disease=self.disease_a,
+            case_count=4,
+            risk_level=4,
+        )
+        LabTest.objects.create(
+            visit=self.visit_a1,
+            test_code="CBC",
+            test_name="Complete Blood Count",
+            result="Abnormal high WBC",
+            test_date="2026-04-01T10:00:00Z",
+            notes="",
+        )
+        LabTest.objects.create(
+            visit=self.visit_b1,
+            test_code="ELEC",
+            test_name="Electrolytes",
+            result="Normal",
+            test_date="2026-04-02T11:00:00Z",
+            notes="",
+        )
+
+        output_dir = Path.cwd() / f"ai_export_test_{uuid4().hex}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            call_command("export_ai_dataset", output_dir=str(output_dir))
+
+            visit_dataset_path = output_dir / "visit_level_dataset.csv"
+            disease_day_dataset_path = output_dir / "disease_region_day_dataset.csv"
+
+            self.assertTrue(visit_dataset_path.exists())
+            self.assertTrue(disease_day_dataset_path.exists())
+
+            with visit_dataset_path.open(encoding="utf-8-sig", newline="") as csv_file:
+                visit_rows = list(csv.DictReader(csv_file))
+
+            with disease_day_dataset_path.open(encoding="utf-8-sig", newline="") as csv_file:
+                disease_day_rows = list(csv.DictReader(csv_file))
+
+            self.assertEqual(len(visit_rows), 3)
+            visit_a1_row = next(row for row in visit_rows if row["visit_id"] == str(self.visit_a1.id))
+            self.assertEqual(visit_a1_row["disease_code"], self.disease_a.disease_code)
+            self.assertEqual(visit_a1_row["primary_region_type"], "home")
+            self.assertEqual(visit_a1_row["has_home_geodata"], "1")
+            self.assertEqual(visit_a1_row["total_lab_test_count"], "1")
+            self.assertEqual(visit_a1_row["abnormal_lab_test_count"], "1")
+            self.assertEqual(visit_a1_row["has_active_alert"], "1")
+
+            measles_home_row = next(
+                row
+                for row in disease_day_rows
+                if row["disease_code"] == self.disease_a.disease_code
+                and row["diagnosis_date"] == "2026-04-01"
+                and row["region_type"] == "home"
+            )
+            self.assertEqual(measles_home_row["visit_count"], "1")
+            self.assertEqual(measles_home_row["unique_patient_count"], "1")
+            self.assertEqual(measles_home_row["total_lab_test_count"], "1")
+            self.assertEqual(measles_home_row["abnormal_lab_test_count"], "1")
+            self.assertEqual(measles_home_row["active_report_count"], "1")
+            self.assertEqual(measles_home_row["high_alert_count"], "1")
+            self.assertEqual(measles_home_row["active_hotspot_count"], "1")
+        finally:
+            shutil.rmtree(output_dir, ignore_errors=True)
 
 
 class OutbreakEngineServiceTests(CoreAPITestCase):
@@ -1487,6 +1648,282 @@ class EvaluateOutbreakEndpointPersistenceTests(CoreAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
+class DBSCANHotspotTests(CoreAPITestCase):
+    def _seed_measles_dbscan_points(self):
+        points = []
+        visit_specs = [
+            (self.patient_one, self.doctor, date(2026, 4, 10), 33.5000, 36.2500, "home"),
+            (self.patient_two, self.second_doctor, date(2026, 4, 11), 33.5006, 36.2504, "home"),
+        ]
+
+        patient_three = Patient.objects.create(
+            national_number="3007",
+            name="Cluster Patient Three",
+            birth_date=date(1994, 8, 8),
+            gender="male",
+            residence_lat=33.5010,
+            residence_long=36.2506,
+            work_lat=33.5015,
+            work_long=36.2510,
+        )
+        visit_specs.append((patient_three, self.doctor, date(2026, 4, 12), 33.5010, 36.2506, "home"))
+
+        patient_four = Patient.objects.create(
+            national_number="3008",
+            name="Noise Patient",
+            birth_date=date(1995, 9, 9),
+            gender="female",
+            residence_lat=33.6200,
+            residence_long=36.4200,
+            work_lat=33.6210,
+            work_long=36.4210,
+        )
+        visit_specs.append((patient_four, self.doctor, date(2026, 4, 12), 33.6200, 36.4200, "home"))
+
+        for patient, doctor, diagnosis_date, latitude, longitude, region_type in visit_specs:
+            visit = Visit.objects.create(
+                patient=patient,
+                doctor=doctor,
+                disease=self.disease_a,
+                diagnosis_date=diagnosis_date,
+                status="confirmed",
+                weight=70,
+                height=175,
+                marital_status="single",
+            )
+            geodata = GeoData.objects.create(
+                patient=patient,
+                visit=visit,
+                latitude=latitude,
+                longitude=longitude,
+                region_type=region_type,
+            )
+            points.append((visit, geodata))
+
+        return points
+
+    def test_detect_dbscan_clusters_finds_local_cluster_and_ignores_noise(self):
+        seeded_points = self._seed_measles_dbscan_points()
+
+        clusters = detect_dbscan_clusters(
+            disease_id=self.disease_a.id,
+            lookback_days=7,
+            eps_km=1.0,
+            min_samples=2,
+        )
+
+        self.assertEqual(len(clusters), 1)
+        cluster = clusters[0]
+        self.assertEqual(cluster.disease_id, self.disease_a.id)
+        self.assertEqual(cluster.point_count, 3)
+        self.assertEqual(len(cluster.member_geodata_ids), 3)
+        self.assertEqual(len(cluster.member_visit_ids), 3)
+        self.assertGreater(cluster.radius_km, 0)
+        self.assertTrue(
+            all(
+                visit.id in cluster.member_visit_ids
+                for visit, _ in seeded_points[:3]
+            )
+        )
+        self.assertNotIn(seeded_points[3][0].id, cluster.member_visit_ids)
+
+    def test_persist_dbscan_clusters_creates_and_updates_geoclusters(self):
+        self._seed_measles_dbscan_points()
+        clusters = detect_dbscan_clusters(
+            disease_id=self.disease_a.id,
+            lookback_days=7,
+            eps_km=1.0,
+            min_samples=2,
+        )
+
+        first_ids = persist_dbscan_clusters(clusters=clusters)
+        second_ids = persist_dbscan_clusters(clusters=clusters)
+
+        self.assertEqual(len(first_ids), 1)
+        self.assertEqual(first_ids, second_ids)
+        self.assertEqual(GeoCluster.objects.filter(disease=self.disease_a).count(), 1)
+
+    def test_admin_can_detect_dbscan_clusters_from_api(self):
+        self._seed_measles_dbscan_points()
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            reverse("geocluster-detect-dbscan"),
+            {
+                "disease": self.disease_a.id,
+                "lookback_days": 7,
+                "eps_km": 1.0,
+                "min_samples": 2,
+                "persist": True,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["cluster_count"], 1)
+        self.assertEqual(len(payload["clusters"]), 1)
+        self.assertEqual(len(payload["persisted_cluster_ids"]), 1)
+        self.assertEqual(GeoCluster.objects.filter(disease=self.disease_a).count(), 1)
+
+
+class AnomalyDetectionTests(CoreAPITestCase):
+    def _create_case(
+        self,
+        *,
+        patient,
+        doctor,
+        disease,
+        diagnosis_date,
+        latitude,
+        longitude,
+        region_type="home",
+    ):
+        visit = Visit.objects.create(
+            patient=patient,
+            doctor=doctor,
+            disease=disease,
+            diagnosis_date=diagnosis_date,
+            status="confirmed",
+            weight=70,
+            height=175,
+            marital_status="single",
+        )
+        GeoData.objects.create(
+            patient=patient,
+            visit=visit,
+            latitude=latitude,
+            longitude=longitude,
+            region_type=region_type,
+        )
+        return visit
+
+    def _create_extra_patient(self, index: int) -> Patient:
+        return Patient.objects.create(
+            national_number=f"4{index:03d}",
+            name=f"Anomaly Patient {index}",
+            birth_date=date(1990, 1, 1),
+            gender="male" if index % 2 else "female",
+            residence_lat=33.50 + (index * 0.001),
+            residence_long=36.25 + (index * 0.001),
+            work_lat=33.55 + (index * 0.001),
+            work_long=36.30 + (index * 0.001),
+        )
+
+    def test_detect_temporal_anomalies_flags_daily_spike(self):
+        stable_dates = [date(2026, 4, 5), date(2026, 4, 6), date(2026, 4, 7), date(2026, 4, 8)]
+        for index, current_date in enumerate(stable_dates, start=1):
+            patient = self._create_extra_patient(index)
+            self._create_case(
+                patient=patient,
+                doctor=self.doctor,
+                disease=self.disease_b,
+                diagnosis_date=current_date,
+                latitude=33.5400 + (index * 0.0002),
+                longitude=36.2800 + (index * 0.0002),
+            )
+
+        spike_date = date(2026, 4, 9)
+        for index in range(5, 9):
+            patient = self._create_extra_patient(index)
+            self._create_case(
+                patient=patient,
+                doctor=self.second_doctor,
+                disease=self.disease_b,
+                diagnosis_date=spike_date,
+                latitude=33.5405 + (index * 0.0002),
+                longitude=36.2805 + (index * 0.0002),
+            )
+
+        candidates = detect_temporal_anomalies(
+            disease_id=self.disease_b.id,
+            lookback_days=14,
+            baseline_window_days=4,
+            region_type="home",
+        )
+
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        self.assertEqual(candidate.disease_id, self.disease_b.id)
+        self.assertEqual(candidate.target_date, "2026-04-09")
+        self.assertEqual(candidate.observed_count, 4)
+        self.assertGreaterEqual(candidate.surge_ratio, 4.0)
+        self.assertIn(candidate.severity, {"high", "critical"})
+
+    def test_detect_temporal_anomalies_ignores_stable_series(self):
+        stable_disease = Disease.objects.create(
+            disease_code="STABLE",
+            name="Stable Disease",
+            type="viral",
+            transmission_vector="airborne",
+            symptoms="fever",
+            risk_level=2,
+            infection_score=0.4,
+        )
+        for index, current_date in enumerate(
+            [date(2026, 4, 5), date(2026, 4, 6), date(2026, 4, 7), date(2026, 4, 8), date(2026, 4, 9)],
+            start=1,
+        ):
+            patient = self._create_extra_patient(index + 20)
+            self._create_case(
+                patient=patient,
+                doctor=self.doctor,
+                disease=stable_disease,
+                diagnosis_date=current_date,
+                latitude=33.5000 + (index * 0.0001),
+                longitude=36.2500 + (index * 0.0001),
+            )
+
+        candidates = detect_temporal_anomalies(
+            disease_id=stable_disease.id,
+            lookback_days=14,
+            baseline_window_days=4,
+            region_type="home",
+        )
+
+        self.assertEqual(candidates, [])
+
+    def test_admin_can_detect_anomalies_from_api(self):
+        for index, current_date in enumerate([date(2026, 4, 5), date(2026, 4, 6), date(2026, 4, 7), date(2026, 4, 8)], start=1):
+            patient = self._create_extra_patient(index + 40)
+            self._create_case(
+                patient=patient,
+                doctor=self.doctor,
+                disease=self.disease_b,
+                diagnosis_date=current_date,
+                latitude=33.5400 + (index * 0.0002),
+                longitude=36.2800 + (index * 0.0002),
+            )
+
+        for index in range(45, 49):
+            patient = self._create_extra_patient(index)
+            self._create_case(
+                patient=patient,
+                doctor=self.second_doctor,
+                disease=self.disease_b,
+                diagnosis_date=date(2026, 4, 9),
+                latitude=33.5410 + (index * 0.0001),
+                longitude=36.2810 + (index * 0.0001),
+            )
+
+        self.client.force_authenticate(user=self.admin_user)
+        response = self.client.get(
+            reverse("report-detect-anomalies"),
+            {
+                "disease": self.disease_b.id,
+                "lookback_days": 14,
+                "baseline_window_days": 4,
+                "region_type": "home",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["candidate_count"], 1)
+        self.assertEqual(payload["candidates"][0]["disease_id"], self.disease_b.id)
+        self.assertEqual(payload["candidates"][0]["target_date"], "2026-04-09")
+
+
 class MissingDataScenarioTests(CoreAPITestCase):
     def test_evaluate_outbreak_returns_clear_error_when_geodata_is_missing(self):
         visit_without_geodata = Visit.objects.create(
@@ -1658,6 +2095,22 @@ class MonitoringVisibilityTests(CoreAPITestCase):
             status="new",
         )
         Report.objects.create(
+            disease=self.disease_a,
+            trigger_visit=self.visit_a2,
+            analysis_period_start=date(2026, 4, 3),
+            analysis_period_end=date(2026, 4, 4),
+            alert_level="medium",
+            summary="Reviewed measles alert",
+            risk_score=35.0,
+            nearby_case_count=1,
+            current_case_count=2,
+            previous_case_count=1,
+            growth_rate=0.8,
+            surge_ratio=1.8,
+            reasons=["trend"],
+            status="reviewed",
+        )
+        Report.objects.create(
             disease=self.disease_b,
             trigger_visit=self.visit_b1,
             analysis_period_start=date(2026, 4, 1),
@@ -1713,9 +2166,10 @@ class MonitoringVisibilityTests(CoreAPITestCase):
         response = self.client.get(reverse("report-active-alerts"))
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.json()), 1)
+        self.assertEqual(len(response.json()), 2)
         self.assertEqual(response.json()[0]["alert_level"], "high")
         self.assertEqual(response.json()[0]["status"], "new")
+        self.assertEqual(response.json()[0]["disease_code"], self.disease_a.disease_code)
 
     def test_active_alerts_can_be_filtered_by_disease(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -1728,6 +2182,18 @@ class MonitoringVisibilityTests(CoreAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json(), [])
 
+    def test_active_alerts_support_limit_and_min_risk_score_filters(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.get(
+            reverse("report-active-alerts"),
+            {"min_risk_score": 40, "limit": 1},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()), 1)
+        self.assertGreaterEqual(response.json()[0]["risk_score"], 40)
+
     def test_admin_can_view_active_hotspots_only(self):
         self.client.force_authenticate(user=self.admin_user)
 
@@ -1736,3 +2202,33 @@ class MonitoringVisibilityTests(CoreAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.json()), 1)
         self.assertEqual(response.json()[0]["risk_level"], 4)
+        self.assertEqual(response.json()[0]["disease_code"], self.disease_a.disease_code)
+
+    def test_active_hotspots_support_case_count_filter(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.get(
+            reverse("geocluster-active-hotspots"),
+            {"min_case_count": 5},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json(), [])
+
+    def test_dashboard_summary_returns_operational_snapshot(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.get(reverse("report-dashboard-summary"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["summary"]["active_alert_count"], 2)
+        self.assertEqual(payload["summary"]["critical_alert_count"], 0)
+        self.assertEqual(payload["summary"]["high_alert_count"], 1)
+        self.assertEqual(payload["summary"]["medium_alert_count"], 1)
+        self.assertEqual(payload["summary"]["new_alert_count"], 1)
+        self.assertEqual(payload["summary"]["reviewed_alert_count"], 1)
+        self.assertEqual(payload["summary"]["active_hotspot_count"], 1)
+        self.assertEqual(payload["top_alert"]["disease"], self.disease_a.id)
+        self.assertEqual(payload["top_hotspot"]["disease"], self.disease_a.id)
+        self.assertEqual(payload["alerts_by_disease"][0]["disease__disease_code"], self.disease_a.disease_code)
