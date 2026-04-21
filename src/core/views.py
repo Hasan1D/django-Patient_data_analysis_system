@@ -38,6 +38,7 @@ from .services.dbscan_hotspots import (
 )
 from .services.outbreak_engine import evaluate_visit_outbreak
 from .services.report_service import create_report_from_analysis
+from .services.risk_prediction import predict_visit_risk, serialize_risk_prediction
 from .services.trend import build_trend_snapshot
 
 
@@ -307,6 +308,20 @@ class VisitViewSet(viewsets.ModelViewSet):
                 "persistence": persistence,
             }
         )
+
+    @action(detail=True, methods=["get"])
+    def predict_risk(self, request, pk=None):
+        visit = self.get_object()
+        model_path = request.query_params.get("model_path")
+
+        try:
+            prediction = predict_visit_risk(visit=visit, model_path=model_path)
+        except FileNotFoundError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(serialize_risk_prediction(prediction))
 
 
 class GeoDataViewSet(viewsets.ModelViewSet):

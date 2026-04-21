@@ -97,6 +97,7 @@ class Visit(models.Model):
     patient = models.ForeignKey(Patient , on_delete=models.CASCADE)   
     doctor = models.ForeignKey(Doctor , on_delete=models.CASCADE)   
     disease = models.ForeignKey(Disease , on_delete=models.CASCADE)
+    diagnose = models.TextField(blank=True, default="")
     diagnosis_date = models.DateField()
     status = models.CharField(max_length=100)
     weight = models.FloatField()   

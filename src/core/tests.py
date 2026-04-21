@@ -19,6 +19,12 @@ from .services.dbscan_hotspots import detect_dbscan_clusters, persist_dbscan_clu
 from .services.disease_reference import REFERENCE_SOURCE_NAME, classify_reference_disease
 from .services.outbreak_engine import evaluate_visit_outbreak
 from .services.report_service import create_report_from_analysis
+from .services.risk_prediction import (
+    build_training_samples,
+    load_risk_model,
+    predict_visit_risk,
+    train_baseline_risk_model,
+)
 from .services.spatial import distance_km, find_nearby_cases
 from .services.trend import build_trend_snapshot, count_cases_for_window
 from .serializers import DiseaseSerializer, ReportSerializer, UserSerializer
@@ -1923,6 +1929,239 @@ class AnomalyDetectionTests(CoreAPITestCase):
         self.assertEqual(payload["candidates"][0]["disease_id"], self.disease_b.id)
         self.assertEqual(payload["candidates"][0]["target_date"], "2026-04-09")
 
+
+class SupervisedRiskPredictionTests(CoreAPITestCase):
+    def _create_labeled_visit(
+        self,
+        *,
+        patient,
+        doctor,
+        disease,
+        diagnosis_date,
+        latitude,
+        longitude,
+        alert_level,
+        risk_score,
+    ):
+        visit = Visit.objects.create(
+            patient=patient,
+            doctor=doctor,
+            disease=disease,
+            diagnosis_date=diagnosis_date,
+            status="confirmed",
+            weight=70,
+            height=175,
+            marital_status="single",
+        )
+        GeoData.objects.create(
+            patient=patient,
+            visit=visit,
+            latitude=latitude,
+            longitude=longitude,
+            region_type="home",
+        )
+        Report.objects.create(
+            disease=disease,
+            trigger_visit=visit,
+            analysis_period_start=diagnosis_date,
+            analysis_period_end=diagnosis_date,
+            alert_level=alert_level,
+            summary=f"{alert_level} alert",
+            risk_score=risk_score,
+            nearby_case_count=1 if alert_level != "low" else 0,
+            current_case_count=1,
+            previous_case_count=0,
+            growth_rate=1.0 if alert_level in {"high", "critical"} else 0.0,
+            surge_ratio=2.0 if alert_level in {"high", "critical"} else 1.0,
+            reasons=[alert_level],
+            status="new",
+        )
+        return visit
+
+    def test_train_baseline_risk_model_creates_artifact_and_samples(self):
+        critical_disease = Disease.objects.create(
+            disease_code="CRIT",
+            name="Critical Disease",
+            type="viral",
+            transmission_vector="airborne",
+            symptoms="fever",
+            risk_level=5,
+            infection_score=0.95,
+            policy_profile="high_priority",
+            high_priority=True,
+        )
+        medium_disease = Disease.objects.create(
+            disease_code="MED",
+            name="Moderate Disease",
+            type="bacterial",
+            transmission_vector="waterborne",
+            symptoms="pain",
+            risk_level=3,
+            infection_score=0.45,
+            policy_profile="cluster_sensitive",
+        )
+
+        extra_patient_one = Patient.objects.create(
+            national_number="7001",
+            name="Risk Patient One",
+            birth_date=date(1992, 1, 1),
+            gender="male",
+            residence_lat=33.5000,
+            residence_long=36.2500,
+            work_lat=33.5100,
+            work_long=36.2600,
+        )
+        extra_patient_two = Patient.objects.create(
+            national_number="7002",
+            name="Risk Patient Two",
+            birth_date=date(1993, 2, 2),
+            gender="female",
+            residence_lat=33.5200,
+            residence_long=36.2700,
+            work_lat=33.5300,
+            work_long=36.2800,
+        )
+
+        low_visit = self._create_labeled_visit(
+            patient=self.patient_one,
+            doctor=self.doctor,
+            disease=medium_disease,
+            diagnosis_date=date(2026, 4, 10),
+            latitude=33.5000,
+            longitude=36.2500,
+            alert_level="low",
+            risk_score=10.0,
+        )
+        critical_visit = self._create_labeled_visit(
+            patient=extra_patient_one,
+            doctor=self.second_doctor,
+            disease=critical_disease,
+            diagnosis_date=date(2026, 4, 11),
+            latitude=33.5005,
+            longitude=36.2504,
+            alert_level="critical",
+            risk_score=95.0,
+        )
+        medium_visit = self._create_labeled_visit(
+            patient=extra_patient_two,
+            doctor=self.doctor,
+            disease=medium_disease,
+            diagnosis_date=date(2026, 4, 12),
+            latitude=33.5400,
+            longitude=36.2800,
+            alert_level="medium",
+            risk_score=35.0,
+        )
+
+        samples = build_training_samples()
+        self.assertGreaterEqual(len(samples), 3)
+        self.assertTrue(any(sample.label == "critical" for sample in samples))
+
+        model_path = Path.cwd() / f"risk_model_test_{uuid4().hex}.json"
+        try:
+            result = train_baseline_risk_model(output_path=model_path)
+            self.assertTrue(model_path.exists())
+            artifact = result["artifact"]
+            self.assertEqual(artifact["sample_count"], len(samples))
+            self.assertIn("critical", artifact["label_counts"])
+
+            loaded_model = load_risk_model(model_path=model_path)
+            self.assertIn("class_centroids", loaded_model)
+
+            prediction = predict_visit_risk(visit=critical_visit, model_path=model_path)
+            self.assertEqual(prediction.visit_id, critical_visit.id)
+            self.assertEqual(prediction.predicted_label, "critical")
+            self.assertGreater(prediction.confidence, 0)
+
+            endpoint_prediction = predict_visit_risk(visit=low_visit, model_path=model_path)
+            self.assertIn(endpoint_prediction.predicted_label, {"low", "medium"})
+            self.assertIn("critical", prediction.class_distances)
+        finally:
+            model_path.unlink(missing_ok=True)
+
+    def test_train_and_predict_commands_and_api_endpoint(self):
+        high_disease = Disease.objects.create(
+            disease_code="HIGH",
+            name="High Disease",
+            type="viral",
+            transmission_vector="airborne",
+            symptoms="fever",
+            risk_level=4,
+            infection_score=0.85,
+            policy_profile="high_priority",
+            high_priority=True,
+        )
+        baseline_disease = Disease.objects.create(
+            disease_code="BASE",
+            name="Baseline Disease",
+            type="viral",
+            transmission_vector="airborne",
+            symptoms="cough",
+            risk_level=2,
+            infection_score=0.35,
+        )
+        extra_patient = Patient.objects.create(
+            national_number="7003",
+            name="Risk Patient Three",
+            birth_date=date(1994, 3, 3),
+            gender="male",
+            residence_lat=33.5100,
+            residence_long=36.2600,
+            work_lat=33.5200,
+            work_long=36.2700,
+        )
+        self._create_labeled_visit(
+            patient=self.patient_one,
+            doctor=self.doctor,
+            disease=baseline_disease,
+            diagnosis_date=date(2026, 4, 10),
+            latitude=33.5000,
+            longitude=36.2500,
+            alert_level="low",
+            risk_score=8.0,
+        )
+        target_visit = self._create_labeled_visit(
+            patient=extra_patient,
+            doctor=self.second_doctor,
+            disease=high_disease,
+            diagnosis_date=date(2026, 4, 11),
+            latitude=33.5004,
+            longitude=36.2503,
+            alert_level="high",
+            risk_score=70.0,
+        )
+        self._create_labeled_visit(
+            patient=self.patient_two,
+            doctor=self.second_doctor,
+            disease=high_disease,
+            diagnosis_date=date(2026, 4, 12),
+            latitude=33.5008,
+            longitude=36.2506,
+            alert_level="critical",
+            risk_score=90.0,
+        )
+
+        model_path = Path.cwd() / f"risk_model_test_{uuid4().hex}.json"
+        try:
+            call_command("train_risk_model", output_path=str(model_path))
+            self.assertTrue(model_path.exists())
+
+            prediction = predict_visit_risk(visit=target_visit, model_path=model_path)
+            self.assertIn(prediction.predicted_label, {"high", "critical"})
+
+            self.client.force_authenticate(user=self.admin_user)
+            response = self.client.get(
+                reverse("visit-predict-risk", args=[target_visit.id]),
+                {"model_path": str(model_path)},
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            payload = response.json()
+            self.assertEqual(payload["visit_id"], target_visit.id)
+            self.assertIn(payload["predicted_label"], {"high", "critical"})
+            self.assertIn("feature_values", payload)
+        finally:
+            model_path.unlink(missing_ok=True)
 
 class MissingDataScenarioTests(CoreAPITestCase):
     def test_evaluate_outbreak_returns_clear_error_when_geodata_is_missing(self):

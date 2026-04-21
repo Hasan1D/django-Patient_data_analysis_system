@@ -106,8 +106,8 @@ class DiseaseAdmin (admin.ModelAdmin):
 
 @admin.register(Visit)
 class visitAdmin (admin.ModelAdmin):
-    list_display = ('id' , 'patient' , 'doctor' , 'disease' , 'diagnosis_date' , 'status')
-    search_fields = ('patient__name' , 'doctor__user__username')
+    list_display = ('id' , 'patient' , 'doctor' , 'disease' , 'diagnose', 'diagnosis_date' , 'status')
+    search_fields = ('patient__name' , 'doctor__user__username', 'diagnose')
     list_filter = ('disease' , 'diagnosis_date' , 'status' )
     
     
