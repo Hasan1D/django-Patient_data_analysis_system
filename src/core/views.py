@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .filters import GeoDataFilter, VisitFilter
-from .models import Disease, Doctor, GeoCluster, GeoData, Hospital, LabTest, Patient, Report, Visit
+from .models import Disease, Doctor, GeoCluster, GeoData, Hospital, LabTest, Patient, Report, User, Visit
 from .permissions import IsAdminOnly, IsDoctorOrAdmin
 from .serializers import (
     DiseaseSerializer,
@@ -22,6 +22,7 @@ from .serializers import (
     LabTestSerializer,
     PatientSerializer,
     ReportSerializer,
+    UserSerializer,
     VisitSerializer,
 )
 from .services import VisitOutbreakContext
@@ -163,6 +164,12 @@ class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all()
     serializer_class = PatientSerializer
     permission_classes = [IsDoctorOrAdmin]
+
+
+class UserViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = User.objects.all().order_by("id")
+    serializer_class = UserSerializer
+    permission_classes = [IsAdminOnly]
 
 
 class DoctorViewSet(viewsets.ModelViewSet):
