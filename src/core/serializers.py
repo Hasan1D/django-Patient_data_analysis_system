@@ -91,6 +91,17 @@ class GeoDataSerializer(serializers.ModelSerializer):
         model = GeoData
         fields = "__all__"
 
+    def validate(self, attrs):
+        patient = attrs.get("patient", getattr(self.instance, "patient", None))
+        visit = attrs.get("visit", getattr(self.instance, "visit", None))
+
+        if patient is not None and visit is not None and patient.id != visit.patient_id:
+            raise serializers.ValidationError(
+                {"patient": "patient must match visit.patient."}
+            )
+
+        return attrs
+
 
 class GeoClusterSerializer(serializers.ModelSerializer):
     disease_name = serializers.CharField(source="disease.name", read_only=True)

@@ -1,5 +1,6 @@
 from datetime import date
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 
@@ -120,6 +121,15 @@ class GeoData(models.Model):
     
     def __str__(self):
         return f"{self.patient.name} - {self.region_type}"
+
+    def clean(self):
+        super().clean()
+        if self.patient_id is not None and self.visit_id is not None and self.patient_id != self.visit.patient_id:
+            raise ValidationError({"patient": "patient must match visit.patient."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
     
     
     
@@ -219,7 +229,7 @@ class Allergy(models.Model):
     allergy_name = models.CharField(max_length=255)
     severity_level = models.CharField(max_length=50)
     
-    def __srt__(self):
+    def __str__(self):
         return f"{self.allergy_name} ({self.severity_level})"
     
     

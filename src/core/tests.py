@@ -2,6 +2,7 @@ from datetime import date
 from pathlib import Path
 import csv
 import shutil
+import time
 from tempfile import NamedTemporaryFile
 from uuid import uuid4
 
@@ -27,11 +28,22 @@ from .services.risk_prediction import (
 )
 from .services.spatial import distance_km, find_nearby_cases
 from .services.trend import build_trend_snapshot, count_cases_for_window
-from .serializers import DiseaseSerializer, ReportSerializer, UserSerializer
+from .serializers import DiseaseSerializer, GeoDataSerializer, ReportSerializer, UserSerializer
 from .models import Disease, Doctor, GeoCluster, GeoData, Hospital, LabTest, Patient, Report, Visit
 
 
 User = get_user_model()
+
+
+def _unlink_with_retries(path: Path, retries: int = 5, delay_seconds: float = 0.2) -> None:
+    for attempt in range(retries):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if attempt == retries - 1:
+                raise
+            time.sleep(delay_seconds)
 
 
 class CoreAPITestCase(APITestCase):
@@ -251,7 +263,7 @@ class PermissionTests(CoreAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_can_generate_report_with_get_request(self):
+    def test_admin_can_preview_report_with_get_request_without_persisting(self):
         self.client.force_authenticate(user=self.admin_user)
 
         response = self.client.get(
@@ -260,11 +272,26 @@ class PermissionTests(CoreAPITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Report.objects.count(), 0)
+        self.assertIsNone(response.json()["id"])
         self.assertEqual(response.json()["disease"], self.disease_a.id)
         self.assertEqual(response.json()["analysis_period_start"], "2026-04-01")
         self.assertEqual(response.json()["analysis_period_end"], "2026-04-01")
         self.assertEqual(response.json()["current_case_count"], 1)
         self.assertEqual(response.json()["alert_level"], "medium")
+
+    def test_admin_can_generate_report_with_post_request(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            reverse("report-generate"),
+            {"disease": self.disease_a.id, "region_type": "home"},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Report.objects.count(), 1)
+        self.assertIsNotNone(response.json()["id"])
+        self.assertEqual(response.json()["disease"], self.disease_a.id)
 
     def test_doctor_can_evaluate_outbreak_for_visit(self):
         self.client.force_authenticate(user=self.doctor_user)
@@ -361,6 +388,20 @@ class SerializerTests(CoreAPITestCase):
         )
         self.assertFalse(invalid_visit_serializer.is_valid())
         self.assertIn("trigger_visit", invalid_visit_serializer.errors)
+
+    def test_geodata_serializer_rejects_patient_that_does_not_match_visit_patient(self):
+        serializer = GeoDataSerializer(
+            data={
+                "patient": self.patient_two.id,
+                "visit": self.visit_a1.id,
+                "latitude": 33.5000,
+                "longitude": 36.2500,
+                "region_type": "home",
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("patient", serializer.errors)
 
 
 class ServicesArchitectureTests(APITestCase):
@@ -2077,7 +2118,7 @@ class SupervisedRiskPredictionTests(CoreAPITestCase):
             self.assertIn(endpoint_prediction.predicted_label, {"low", "medium"})
             self.assertIn("critical", prediction.class_distances)
         finally:
-            model_path.unlink(missing_ok=True)
+            _unlink_with_retries(model_path)
 
     def test_train_and_predict_commands_and_api_endpoint(self):
         high_disease = Disease.objects.create(
@@ -2161,7 +2202,7 @@ class SupervisedRiskPredictionTests(CoreAPITestCase):
             self.assertIn(payload["predicted_label"], {"high", "critical"})
             self.assertIn("feature_values", payload)
         finally:
-            model_path.unlink(missing_ok=True)
+            _unlink_with_retries(model_path)
 
 class MissingDataScenarioTests(CoreAPITestCase):
     def test_evaluate_outbreak_returns_clear_error_when_geodata_is_missing(self):

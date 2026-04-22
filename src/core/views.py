@@ -86,6 +86,42 @@ def _build_report_reasons(*, disease, region_type: str | None, current_case_coun
     return reasons
 
 
+def _build_generated_report_kwargs(*, disease, analysis_period_start, analysis_period_end, region_type: str | None, trend):
+    risk_score = trend.current_count * disease.infection_score * disease.risk_level
+    alert_level = _report_alert_level(
+        risk_score=risk_score,
+        current_case_count=trend.current_count,
+        surge_ratio=trend.surge_ratio,
+    )
+    summary = (
+        f"Disease {disease.name} recorded {trend.current_count} case(s) "
+        f"between {analysis_period_start} and {analysis_period_end} "
+        f"with alert level {alert_level}."
+    )
+
+    return {
+        "disease": disease,
+        "trigger_visit": None,
+        "analysis_period_start": analysis_period_start,
+        "analysis_period_end": analysis_period_end,
+        "alert_level": alert_level,
+        "summary": summary,
+        "risk_score": risk_score,
+        "nearby_case_count": 0,
+        "current_case_count": trend.current_count,
+        "previous_case_count": trend.previous_count,
+        "growth_rate": trend.growth_rate,
+        "surge_ratio": trend.surge_ratio,
+        "reasons": _build_report_reasons(
+            disease=disease,
+            region_type=region_type,
+            current_case_count=trend.current_count,
+            trend=trend,
+        ),
+        "status": "new",
+    }
+
+
 def _to_bool(value) -> bool:
     if isinstance(value, bool):
         return value
@@ -567,40 +603,18 @@ class ReportViewSet(viewsets.ModelViewSet):
             previous_end=previous_period_end,
             region_type=region_type,
         )
-
-        risk_score = trend.current_count * disease.infection_score * disease.risk_level
-        alert_level = _report_alert_level(
-            risk_score=risk_score,
-            current_case_count=trend.current_count,
-            surge_ratio=trend.surge_ratio,
-        )
-        summary = (
-            f"Disease {disease.name} recorded {trend.current_count} case(s) "
-            f"between {analysis_period_start} and {analysis_period_end} "
-            f"with alert level {alert_level}."
-        )
-
-        report = Report.objects.create(
+        report_kwargs = _build_generated_report_kwargs(
             disease=disease,
-            trigger_visit=None,
             analysis_period_start=analysis_period_start,
             analysis_period_end=analysis_period_end,
-            alert_level=alert_level,
-            summary=summary,
-            risk_score=risk_score,
-            nearby_case_count=0,
-            current_case_count=trend.current_count,
-            previous_case_count=trend.previous_count,
-            growth_rate=trend.growth_rate,
-            surge_ratio=trend.surge_ratio,
-            reasons=_build_report_reasons(
-                disease=disease,
-                region_type=region_type,
-                current_case_count=trend.current_count,
-                trend=trend,
-            ),
-            status="new",
+            region_type=region_type,
+            trend=trend,
         )
 
+        if request.method == "GET":
+            serializer = ReportSerializer(Report(**report_kwargs))
+            return Response(serializer.data)
+
+        report = Report.objects.create(**report_kwargs)
         serializer = ReportSerializer(report)
-        return Response(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
