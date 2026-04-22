@@ -18,7 +18,7 @@ from django.contrib import admin
 from django.urls import path , include
 from rest_framework.routers import DefaultRouter
 from core.views import (
-    PatientViewSet , DoctorViewSet , HospitalViewSet ,
+    PatientViewSet , UserViewSet , DoctorViewSet , HospitalViewSet ,
     DiseaseViewSet ,VisitViewSet , GeoDataViewSet , 
     GeoClusterViewSet , ReportViewSet , LabTestViewSet )
 
@@ -30,6 +30,7 @@ from rest_framework_simplejwt.views import (
 
 router = DefaultRouter()
 router.register(r'patients' , PatientViewSet)
+router.register(r'users' , UserViewSet)
 router.register(r'doctors' , DoctorViewSet)
 router.register(r'hospitals' , HospitalViewSet)
 router.register(r'diseases' , DiseaseViewSet)

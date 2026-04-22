@@ -222,6 +222,25 @@ class AnalyticsFilteringTests(CoreAPITestCase):
 
 
 class PermissionTests(CoreAPITestCase):
+    def test_users_endpoint_is_admin_only(self):
+        self.client.force_authenticate(user=self.doctor_user)
+
+        response = self.client.get(reverse("user-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_list_users_endpoint(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.get(reverse("user-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        usernames = [item["username"] for item in response.json()]
+        self.assertIn(self.admin_user.username, usernames)
+        self.assertIn(self.doctor_user.username, usernames)
+        self.assertIn(self.second_doctor_user.username, usernames)
+        self.assertNotIn("password", response.json()[0])
+
     def test_doctors_endpoint_requires_authentication(self):
         response = self.client.get(reverse("doctor-list"))
 

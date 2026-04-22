@@ -1,15 +1,28 @@
-# تجاهل ملفات البيئة الوهمية الموجودة في جذرك
-/include/
-/lib/
-/Scripts/
+# Virtual Environment
+Lib/
+Scripts/
+Include/
 pyvenv.cfg
 
-# تجاهل ملفات الإعدادات الخاصة بـ VS Code
+# IDEs
 .vscode/
+.idea/
 
-# تجاهل قاعدة البيانات (نحن نرفع الكود وليس البيانات المحلية)
-*.sqlite3
+# Postman & Tests
+.postman/
+postman/
+ai_export_test_*/
+risk_model_test_*.json
 
-# تجاهل ملفات الكاش الخاصة بباثون
-**/__pycache__/
+# App Outputs
+exports/
+
+# Python & Django
+__pycache__/
 *.pyc
+db.sqlite3
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
