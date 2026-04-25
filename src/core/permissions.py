@@ -1,5 +1,7 @@
 from rest_framework.permissions import BasePermission
 
+from .models import User
+
 
 class IsDoctorOrAdmin(BasePermission):
     """
@@ -8,7 +10,7 @@ class IsDoctorOrAdmin(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated and
-            request.user.role in ['doctor', 'admin']
+            request.user.role in (User.ROLE_DOCTOR, User.ROLE_ADMIN)
         )
 
 
@@ -19,5 +21,5 @@ class IsAdminOnly(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated and
-            request.user.role == 'admin'
+            request.user.role == User.ROLE_ADMIN
         )

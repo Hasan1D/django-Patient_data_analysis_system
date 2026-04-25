@@ -7,6 +7,7 @@ from pathlib import Path
 
 from core.models import Visit
 
+from .active_cases import active_visits_queryset, is_active_visit_in_queryset
 from .alert_policies import get_policy_for_disease
 from .outbreak_engine import evaluate_visit_outbreak
 from .spatial import distance_km
@@ -202,7 +203,7 @@ def _label_from_engine(*, visit: Visit) -> tuple[str, str]:
 
 
 def build_training_samples() -> list[RiskTrainingSample]:
-    visits = (
+    visits = active_visits_queryset(
         Visit.objects.select_related("patient", "doctor__hospital", "disease")
         .prefetch_related("geodata_set", "labtest_set", "reports", "disease__geocluster_set")
         .order_by("id")
@@ -323,8 +324,18 @@ def load_risk_model(*, model_path: str | Path | None = None) -> dict[str, object
 
 
 def predict_visit_risk(*, visit: Visit, model_path: str | Path | None = None) -> RiskPrediction:
-    artifact = load_risk_model(model_path=model_path)
     feature_values = build_visit_feature_map(visit=visit)
+    if not is_active_visit_in_queryset(visit_id=visit.id):
+        return RiskPrediction(
+            visit_id=visit.id,
+            predicted_label="low",
+            confidence=1.0,
+            class_distances={},
+            feature_values=feature_values,
+            label_source="inactive_status",
+        )
+
+    artifact = load_risk_model(model_path=model_path)
     normalized_features = _normalize_features(
         features=feature_values,
         feature_min=artifact["feature_min"],

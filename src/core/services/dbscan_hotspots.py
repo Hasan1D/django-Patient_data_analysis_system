@@ -5,8 +5,9 @@ from typing import Iterable
 from django.db.models import Max
 from django.utils import timezone
 
-from core.models import Disease, GeoCluster, GeoData
+from core.models import Disease, GeoCluster, GeoData, Visit
 
+from .active_cases import active_geodata_queryset, one_geodata_per_visit_queryset
 from .spatial import distance_km
 
 
@@ -69,15 +70,21 @@ def _collect_points(
         date_to=date_to,
     )
 
-    queryset = GeoData.objects.select_related("visit__disease", "patient").all()
+    visits = Visit.objects.all()
     if disease_id is not None:
-        queryset = queryset.filter(visit__disease_id=disease_id)
+        visits = visits.filter(disease_id=disease_id)
     if resolved_date_from is not None:
-        queryset = queryset.filter(visit__diagnosis_date__gte=resolved_date_from)
+        visits = visits.filter(diagnosis_date__gte=resolved_date_from)
     if resolved_date_to is not None:
-        queryset = queryset.filter(visit__diagnosis_date__lte=resolved_date_to)
+        visits = visits.filter(diagnosis_date__lte=resolved_date_to)
+
+    queryset = active_geodata_queryset(
+        GeoData.objects.select_related("visit__disease", "patient").all(),
+        visit_queryset=visits,
+    )
     if region_type:
         queryset = queryset.filter(region_type=region_type)
+    queryset = one_geodata_per_visit_queryset(queryset)
 
     queryset = queryset.order_by("visit__diagnosis_date", "id")
 

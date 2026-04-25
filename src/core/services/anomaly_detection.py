@@ -5,7 +5,9 @@ from statistics import median
 
 from django.db.models import Count, Max
 
-from core.models import GeoData
+from core.models import GeoData, Visit
+
+from .active_cases import active_geodata_queryset
 
 
 @dataclass(frozen=True)
@@ -52,13 +54,18 @@ def _series_rows(*, disease_id: int | None, region_type: str | None, date_from=N
         date_to=date_to,
     )
 
-    queryset = GeoData.objects.select_related("visit__disease").all()
+    visits = Visit.objects.all()
     if disease_id is not None:
-        queryset = queryset.filter(visit__disease_id=disease_id)
+        visits = visits.filter(disease_id=disease_id)
     if resolved_date_from is not None:
-        queryset = queryset.filter(visit__diagnosis_date__gte=resolved_date_from)
+        visits = visits.filter(diagnosis_date__gte=resolved_date_from)
     if resolved_date_to is not None:
-        queryset = queryset.filter(visit__diagnosis_date__lte=resolved_date_to)
+        visits = visits.filter(diagnosis_date__lte=resolved_date_to)
+
+    queryset = active_geodata_queryset(
+        GeoData.objects.select_related("visit__disease").all(),
+        visit_queryset=visits,
+    )
     if region_type:
         queryset = queryset.filter(region_type=region_type)
 

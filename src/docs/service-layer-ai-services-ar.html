@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>توثيق طبقة الخدمات وطبقة الذكاء الاصطناعي</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --paper: #fffdf8;
+      --ink: #1f2937;
+      --muted: #5b6470;
+      --line: #d8cfc0;
+      --accent: #8f4b2e;
+      --accent-soft: #f4e4d7;
+      --code: #f2eee8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top right, rgba(143, 75, 46, 0.08), transparent 22rem),
+        linear-gradient(180deg, #efe7da 0%, var(--bg) 100%);
+      color: var(--ink);
+      font-family: "Tahoma", "Arial", sans-serif;
+      line-height: 1.9;
+    }
+
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 18mm 16mm 18mm 16mm;
+      background: var(--paper);
+    }
+
+    header {
+      border-bottom: 2px solid var(--line);
+      padding-bottom: 12px;
+      margin-bottom: 22px;
+    }
+
+    h1, h2, h3, h4 {
+      margin: 0 0 10px;
+      color: #151b24;
+      line-height: 1.5;
+    }
+
+    h1 {
+      font-size: 28px;
+      color: var(--accent);
+    }
+
+    h2 {
+      margin-top: 28px;
+      padding: 10px 12px;
+      font-size: 21px;
+      background: var(--accent-soft);
+      border-right: 5px solid var(--accent);
+      border-radius: 10px;
+    }
+
+    h3 {
+      margin-top: 20px;
+      font-size: 18px;
+      color: #7a3d24;
+    }
+
+    h4 {
+      margin-top: 14px;
+      font-size: 16px;
+      color: #334155;
+    }
+
+    p {
+      margin: 8px 0;
+      font-size: 14px;
+    }
+
+    ul, ol {
+      margin: 8px 0 12px;
+      padding-right: 22px;
+    }
+
+    li {
+      margin: 4px 0;
+      font-size: 14px;
+    }
+
+    code {
+      font-family: "Consolas", "Courier New", monospace;
+      background: var(--code);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--code);
+      border: 1px solid #ddd4c8;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 12px;
+      line-height: 1.7;
+      overflow: hidden;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .lead {
+      font-size: 15px;
+    }
+
+    .callout {
+      margin: 16px 0;
+      padding: 14px 16px;
+      background: #faf5ef;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+
+    .file-card {
+      margin-top: 18px;
+      padding: 14px 16px;
+      background: #fffaf2;
+      border: 1px solid #e3d7c5;
+      border-radius: 14px;
+      break-inside: avoid;
+    }
+
+    .tag {
+      display: inline-block;
+      margin-left: 6px;
+      margin-bottom: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: #5e331f;
+      background: #f5dfd0;
+      border-radius: 999px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mini {
+      padding: 12px;
+      background: #fcf7f0;
+      border: 1px solid #e8ddcf;
+      border-radius: 12px;
+    }
+
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .toc a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        padding: 10mm 8mm;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>توثيق طبقة الخدمات وطبقة الذكاء الاصطناعي في المشروع</h1>
+      <p class="lead">
+        هذه الوثيقة مكتوبة كرسالة تقنية تشرح المشروع من زاوية عملية، وتركز بشكل خاص على مجلد
+        <code>core/services</code> لأنه يمثل قلب المنطق التحليلي والذكاء الاصطناعي داخل النظام.
+      </p>
+      <p class="meta">
+        المشروع: <code>django-Patient_data_analysis_system</code><br>
+        تاريخ التوثيق: 2026-04-23<br>
+        البيئة الحالية: Python 3.13.3, Django 5.2.9, SQLite, Django REST Framework
+      </p>
+    </header>
+
+    <section>
+      <h2>رسالة افتتاحية</h2>
+      <p>
+        هذا المشروع ليس مجرد CRUD لإدارة بيانات المرضى، بل هو منصة مراقبة وبائية مصغرة تجمع بين تخزين
+        الزيارات الطبية، تتبع البيانات الجغرافية، تقييم التجمعات المرضية، إصدار التنبيهات، وتكوين بيانات
+        جاهزة للتعلم الآلي. أهم ما يميّزه أن الذكاء الاصطناعي فيه ليس طبقة واحدة فقط، بل طبقة هجينة
+        <strong>Hybrid AI Layer</strong> تجمع بين قواعد خبرائية، تحليل زمني، تحليل مكاني، وتجربة تعلم
+        خاضع للإشراف لتقدير مستوى الخطورة.
+      </p>
+      <p>
+        عمليًا، مجلد <code>core/services</code> هو المكان الذي تتحول فيه البيانات الخام مثل
+        <code>Visit</code> و<code>GeoData</code> إلى قرارات تشغيلية مثل: هل لدينا تفشٍ محتمل؟ هل يجب
+        إنشاء تقرير؟ هل يجب إنشاء hotspot؟ هل يوجد شذوذ زمني؟ وما هو مستوى خطر الزيارة إذا أردنا
+        استخدام نموذج تنبؤ؟
+      </p>
+    </section>
+
+    <section class="toc">
+      <h2>فهرس مختصر</h2>
+      <ol>
+        <li><a href="#overview">نظرة عامة على المشروع</a></li>
+        <li><a href="#stack">التقنيات المستخدمة</a></li>
+        <li><a href="#ai-layer">طبقة الذكاء الاصطناعي</a></li>
+        <li><a href="#service-files">شرح ملفات <code>core/services</code> ملفًا ملفًا</a></li>
+        <li><a href="#commands">الأوامر المرتبطة بطبقة التحليل</a></li>
+        <li><a href="#flows">سيناريوهات التشغيل الفعلية</a></li>
+        <li><a href="#strengths">نقاط القوة والحدود الحالية</a></li>
+      </ol>
+    </section>
+
+    <section id="overview">
+      <h2>نظرة عامة على المشروع</h2>
+      <p>
+        المشروع مبني حول كيان الزيارة الطبية <code>Visit</code>، والمرض <code>Disease</code>، وسجل
+        الموقع <code>GeoData</code>، والتقرير التشغيلي <code>Report</code>، والعنقود الجغرافي
+        <code>GeoCluster</code>. من هذه الكيانات يتم توليد رؤية تحليلية تساعد في اكتشاف الأنماط
+        الوبائية محليًا.
+      </p>
+      <div class="grid">
+        <div class="mini">
+          <h4>الطبقات الأساسية</h4>
+          <ul>
+            <li><code>models.py</code>: تعريف البيانات والكيانات الأساسية.</li>
+            <li><code>serializers.py</code>: التحقق وتحويل البيانات بين JSON والنماذج.</li>
+            <li><code>views.py</code>: تعريف الـ API endpoints.</li>
+            <li><code>services/</code>: منطق الأعمال والتحليل والذكاء الاصطناعي.</li>
+            <li><code>signals.py</code>: تشغيل المراقبة تلقائيًا بعد حفظ البيانات الجغرافية.</li>
+          </ul>
+        </div>
+        <div class="mini">
+          <h4>الفكرة التشغيلية</h4>
+          <ul>
+            <li>كل زيارة يمكن أن تكون لها بيانات جغرافية متعددة.</li>
+            <li>المرض يمتلك خصائص شدة وخطورة وملف سياسة <code>policy_profile</code>.</li>
+            <li>طبقة الخدمات تحلل الزيارة في سياق زمني ومكاني.</li>
+            <li>ثم تنتج تنبيهًا، تقريرًا، hotspot، أو ملف تدريب لنموذج المخاطر.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="stack">
+      <h2>التقنيات المستخدمة</h2>
+      <ul>
+        <li><strong>Python 3.13.3</strong>: لغة التنفيذ الأساسية.</li>
+        <li><strong>Django 5.2.9</strong>: إطار الويب وإدارة النماذج والـ ORM والإدارة.</li>
+        <li><strong>Django REST Framework</strong>: بناء واجهات الـ API.</li>
+        <li><strong>django-filter</strong>: دعم الفلاتر الزمنية والجغرافية على الزيارات والبيانات.</li>
+        <li><strong>SimpleJWT</strong>: توثيق يعتمد على JWT للوصول إلى الـ API.</li>
+        <li><strong>SQLite</strong>: قاعدة البيانات الحالية، مناسبة للتطوير والنمذجة السريعة.</li>
+        <li><strong>JSON artifact</strong>: تخزين نموذج المخاطر بصيغة JSON بدل مكتبات ML خارجية.</li>
+        <li><strong>CSV export</strong>: تجهيز بيانات AI وanalytics بصيغة قابلة لإعادة الاستخدام.</li>
+      </ul>
+      <div class="callout">
+        <p>
+          مهم جدًا: طبقة الذكاء الاصطناعي هنا لا تعتمد على TensorFlow أو PyTorch أو scikit-learn.
+          هذه نقطة قوة وضعف في نفس الوقت: القوة أنها بسيطة وقابلة للفهم والتسليم الأكاديمي، والضعف أنها
+          ليست منصة ML كبيرة أو مدربة بأسلوب بحثي متقدم.
+        </p>
+      </div>
+    </section>
+
+    <section id="ai-layer">
+      <h2>طبقة الذكاء الاصطناعي في المشروع</h2>
+      <p>
+        طبقة الذكاء الاصطناعي هنا <strong>هجينة</strong>، أي أنها لا تعتمد على خوارزمية واحدة فقط.
+        بل تتكون من أربع عائلات منطقية:
+      </p>
+      <ul>
+        <li><strong>ذكاء قائم على القواعد Rule-Based Intelligence</strong>: ممثل أساسًا في <code>alert_policies.py</code> و<code>outbreak_engine.py</code>.</li>
+        <li><strong>تحليل زمني Statistical Time Analysis</strong>: ممثل في <code>trend.py</code> و<code>anomaly_detection.py</code>.</li>
+        <li><strong>تحليل مكاني Spatial Intelligence</strong>: ممثل في <code>spatial.py</code> و<code>cluster_service.py</code> و<code>dbscan_hotspots.py</code>.</li>
+        <li><strong>تعلم خاضع للإشراف Lightweight Supervised Learning</strong>: ممثل في <code>risk_prediction.py</code>.</li>
+      </ul>
+      <h3>لماذا هذه الطبقة مهمة؟</h3>
+      <p>
+        لأن النظام يحاول الإجابة عن أربعة أسئلة مختلفة:
+      </p>
+      <ol>
+        <li>هل الزيارة الحالية جزء من تفشٍ وبائي محلي؟</li>
+        <li>هل يوجد شذوذ زمني في عدد الحالات؟</li>
+        <li>هل يوجد hotspot جغرافي واضح؟</li>
+        <li>إذا جمعنا الخصائص كلها، فما فئة الخطر المتوقعة لهذه الزيارة؟</li>
+      </ol>
+      <div class="callout">
+        <h4>الخلاصة الذكية</h4>
+        <p>
+          المشروع أقرب إلى <strong>نظام دعم قرار سريري-وبائي</strong> منه إلى نموذج ذكاء اصطناعي
+          أسود الصندوق. وهذا ممتاز إذا كان الهدف هو الشرح، الفهم، والقدرة على تبرير كل قرار اتخذه النظام.
+        </p>
+      </div>
+    </section>
+
+    <section id="service-files" class="page-break">
+      <h2>شرح ملفات <code>core/services</code> ملفًا ملفًا</h2>
+
+      <article class="file-card">
+        <span class="tag">Re-export Layer</span>
+        <h3>1. الملف <code>__init__.py</code></h3>
+        <p><strong>وظيفته:</strong> هذا الملف لا يحتوي خوارزمية بحد ذاته، لكنه يقوم بتصدير العقود الأساسية من ملف <code>contracts.py</code>.</p>
+        <p><strong>الفائدة المعمارية:</strong> بدل أن تستورد بقية الطبقات الكائنات من <code>core.services.contracts</code> مباشرة، يمكنها الاستيراد من <code>core.services</code> وهذا يجعل الواجهة البرمجية أوضح وأنظف.</p>
+        <p><strong>متى يظهر أثره؟</strong> في <code>views.py</code> و<code>monitoring_service.py</code> عند استخدام <code>VisitOutbreakContext</code> أو <code>OutbreakAnalysis</code>.</p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Contracts</span>
+        <h3>2. الملف <code>contracts.py</code></h3>
+        <p><strong>الفكرة:</strong> هذا الملف يعرّف اللغة الداخلية التي تتفاهم بها بقية ملفات الخدمات.</p>
+        <h4>أهم الكيانات</h4>
+        <ul>
+          <li><code>VisitOutbreakContext</code>: يمثل الزيارة لحظة تحليلها، ويضم المرض، التاريخ، الإحداثيات، ونوع المنطقة.</li>
+          <li><code>NearbyCase</code>: يمثل حالة قريبة مكانيًا وزمنيًا من الزيارة الحالية.</li>
+          <li><code>TrendSnapshot</code>: يمثل مقارنة زمنية بين نافذة حالية ونافذة سابقة.</li>
+          <li><code>DiseaseAlertPolicy</code>: سياسة القرار الخاصة بكل مرض، وفيها أوزان وشروط التحليل.</li>
+          <li><code>OutbreakAnalysis</code>: الناتج النهائي لمحرك التفشي، ويشمل الدرجة، المستوى، الأسباب، وما إذا كان يجب إنشاء تقرير أو cluster.</li>
+        </ul>
+        <p>
+          <strong>لماذا هو مهم؟</strong> لأنه يفصل بين تمثيل البيانات وبين طريقة جلبها أو تخزينها، وهذا يجعل
+          الخدمات أقرب إلى منطق أعمال مستقل وليس كودًا متناثرًا داخل الـ views.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Knowledge Base</span>
+        <span class="tag">Rule Engine Input</span>
+        <h3>3. الملف <code>alert_policies.py</code></h3>
+        <p><strong>هذا الملف هو قاعدة المعرفة الوبائية في النظام.</strong> هنا يتم تحديد كيفية التعامل مع كل مرض قبل تشغيل محرك القرار.</p>
+        <h4>ماذا يحتوي؟</h4>
+        <ul>
+          <li>خرائط alias بين الأكواد المختلفة مثل <code>MEA</code> و<code>MEASLES</code> و<code>1F03</code>.</li>
+          <li>قوائم الأمراض عالية الأولوية والأمراض النادرة.</li>
+          <li>قوالب سياسات جاهزة مثل <code>high_priority</code> و<code>rare</code> و<code>cluster_sensitive</code>.</li>
+          <li>تخصيصات دقيقة لأمراض بعينها مثل cholera, polio, ebola, influenza.</li>
+        </ul>
+        <h4>كيف يعمل الكود؟</h4>
+        <ol>
+          <li>ينظف كود المرض ويحوّله لصيغة معيارية.</li>
+          <li>يحول أي alias إلى canonical code.</li>
+          <li>يطبّع <code>infection_score</code> إذا كانت القيم ليست أصلًا بين 0 و1.</li>
+          <li>يستنتج هل المرض نادر أو عالي الأولوية من خصائصه ومن <code>policy_profile</code>.</li>
+          <li>يبني سياسة أساسية <code>DiseaseAlertPolicy</code> انطلاقًا من شدة المرض وخطورته.</li>
+          <li>يطبق profile overrides ثم disease-specific overrides.</li>
+        </ol>
+        <h4>المغزى الذكي</h4>
+        <p>
+          هذه طبقة خبرائية. بدلاً من ترك كل الأمراض تتصرف بنفس الحساسية، يعطي النظام لكل مرض شخصية تشغيلية
+          مختلفة. مثلًا المرض النادر قد يصبح <code>critical</code> من أول حالة، بينما مرض آخر يحتاج عددًا
+          أكبر من الحالات أو نموًا زمنيًا واضحًا.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Spatial Math</span>
+        <h3>4. الملف <code>spatial.py</code></h3>
+        <p><strong>وظيفته:</strong> تقديم المنطق الجغرافي الأساسي.</p>
+        <h4>الدالة <code>distance_km</code></h4>
+        <p>
+          تستخدم صيغة <strong>Haversine</strong> لحساب المسافة بين نقطتين على سطح الأرض بالكيلومترات. هذا مهم لأن
+          الاعتماد على فرق درجات latitude/longitude مباشرة يعطي نتائج غير دقيقة.
+        </p>
+        <pre>distance = 2 * R * asin(sqrt(haversine_value))</pre>
+        <h4>الدالة <code>find_nearby_cases</code></h4>
+        <p>تقوم بالخطوات التالية:</p>
+        <ol>
+          <li>تحدد نافذة زمنية تبدأ من <code>diagnosis_date - lookback_days</code>.</li>
+          <li>تجلب كل <code>GeoData</code> لنفس المرض داخل هذه النافذة.</li>
+          <li>تستثني الزيارة الحالية.</li>
+          <li>تفلتر حسب <code>region_type</code> إذا طُلب ذلك.</li>
+          <li>تحسب المسافة لكل مرشح.</li>
+          <li>تحتفظ فقط بالحالات الواقعة داخل نصف القطر المحدد.</li>
+          <li>تعيد قائمة مرتبة حسب المسافة والتاريخ.</li>
+        </ol>
+        <p>
+          هذا الملف هو الأساس المكاني الذي تعتمد عليه لاحقًا ملفات التفشي وDBSCAN والعناقيد.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Temporal Analysis</span>
+        <h3>5. الملف <code>trend.py</code></h3>
+        <p><strong>وظيفته:</strong> قياس الفرق بين فترة حالية وفترة سابقة لنفس المرض.</p>
+        <h4>الدالة <code>count_cases_for_window</code></h4>
+        <ul>
+          <li>تعد الزيارات <code>Visit</code> لا سجلات <code>GeoData</code>.</li>
+          <li>هذا يمنع over-counting إذا كانت الزيارة لها أكثر من سجل جغرافي.</li>
+          <li>يمكن تقييد العد بحسب <code>region_type</code>.</li>
+        </ul>
+        <h4>الدالة <code>build_trend_snapshot</code></h4>
+        <p>تحسب:</p>
+        <ul>
+          <li><code>current_count</code>: عدد الحالات في النافذة الحالية.</li>
+          <li><code>previous_count</code>: عدد الحالات في النافذة السابقة.</li>
+          <li><code>growth_rate</code>: نسبة التغير = <code>(current - previous) / previous</code>.</li>
+          <li><code>surge_ratio</code>: كم مرة النافذة الحالية أكبر من السابقة = <code>current / previous</code>.</li>
+        </ul>
+        <p>
+          إذا لم توجد baseline سابقة وكان هناك نشاط حالي، فإن الملف يتعامل مع ذلك باعتباره نشاطًا جديدًا
+          ويعطي قيمًا موجبة بدل كسر الحساب بالقسمة على صفر.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Core Decision Engine</span>
+        <span class="tag">AI Layer</span>
+        <h3>6. الملف <code>outbreak_engine.py</code></h3>
+        <p><strong>هذا هو أهم ملف ذكاء اصطناعي في المشروع.</strong> هو محرك اتخاذ القرار الخاص بالتفشي.</p>
+        <h4>الفكرة العامة</h4>
+        <p>
+          يأخذ <code>context</code> و<code>policy</code>، ثم يجمع بين ثلاثة أبعاد:
+        </p>
+        <ul>
+          <li>شدة المرض وخصائصه.</li>
+          <li>الكثافة المحلية للحالات المجاورة.</li>
+          <li>النمو الزمني مقارنة بالنافذة السابقة.</li>
+        </ul>
+        <h4>الخطوات الداخلية</h4>
+        <ol>
+          <li>بناء نافذتين زمنيتين: current وprevious.</li>
+          <li>استخدام <code>find_nearby_cases</code> لحساب الحالات القريبة.</li>
+          <li>استخدام <code>build_trend_snapshot</code> لحساب النمو والارتفاع.</li>
+          <li>تحويل النتائج إلى نقاط score عبر أوزان السياسة.</li>
+          <li>اختيار مستوى التنبيه النهائي.</li>
+          <li>بناء تفسير نصي reasons.</li>
+          <li>تحديد هل يجب إنشاء تقرير وهل يجب إنشاء cluster.</li>
+        </ol>
+        <h4>نظام النقاط</h4>
+        <pre>severity_points = 8 * severity_weight + 6 if high_priority
+density_points = 20 * density_weight * density_factor
+trend_points = 16 * trend_weight * trend_factor
+rarity_points = 20 * rarity_weight if rare_disease
+score = min(total, 100)</pre>
+        <h4>الدوال المساعدة المهمة</h4>
+        <ul>
+          <li><code>_density_factor</code>: يحول عدد الحالات المحلية إلى عامل بين منخفض وعالٍ.</li>
+          <li><code>_trend_factor</code>: يحول النمو الزمني إلى عامل scoring.</li>
+          <li><code>_determine_alert_level</code>: يترجم score والسياق إلى <code>low / medium / high / critical</code>.</li>
+          <li><code>_build_reasons</code>: يفسر القرار نصيًا.</li>
+        </ul>
+        <p>
+          القيمة الحقيقية لهذا الملف أنه لا يعطي نتيجة فقط، بل يعطي نتيجة <strong>مفسَّرة</strong>.
+          وهذا مهم جدًا في الأنظمة الصحية لأن التفسير أحيانًا أهم من الرقم نفسه.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Persistence</span>
+        <h3>7. الملف <code>report_service.py</code></h3>
+        <p><strong>وظيفته:</strong> تحويل ناتج التحليل إلى كيان <code>Report</code> داخل قاعدة البيانات.</p>
+        <h4>الفلسفة التصميمية</h4>
+        <p>
+          هذا الملف لا يعيد تحليل الزيارة. التحليل تم بالفعل في <code>outbreak_engine.py</code>. هنا فقط
+          يتم اتخاذ قرار الحفظ الذكي وعدم تكرار التقارير لنفس الحدث.
+        </p>
+        <h4>أهم ما يفعله</h4>
+        <ul>
+          <li>يستخرج فترة التحليل من <code>analysis.metadata</code>.</li>
+          <li>يبحث عن تقرير موجود لنفس الزيارة أو لنفس الحدث النشط زمنيًا.</li>
+          <li>إذا لم يوجد، ينشئ تقريرًا جديدًا.</li>
+          <li>إذا وجد، يحدّثه بدل مضاعفته.</li>
+          <li>يضم الأسباب القديمة والجديدة عبر <code>_merge_reasons</code>.</li>
+          <li>يرفع مستوى الخطورة إذا كانت الحالة الجديدة أخطر.</li>
+        </ul>
+        <h4>المغزى المعماري</h4>
+        <p>
+          هذا الملف يمنع تحول النظام إلى مولّد تقارير متكررة، ويحافظ على مفهوم أن عدة زيارات قد تنتمي
+          إلى outbreak واحد مستمر، لا إلى 10 تقارير منفصلة بلا معنى.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Geo Persistence</span>
+        <h3>8. الملف <code>cluster_service.py</code></h3>
+        <p><strong>وظيفته:</strong> حفظ أو تحديث العنقود الجغرافي <code>GeoCluster</code> بناءً على نتيجة التحليل.</p>
+        <h4>كيف يحسب cluster؟</h4>
+        <ol>
+          <li>يجلب إحداثيات الحالات المطابقة من <code>analysis.matched_case_ids</code>.</li>
+          <li>يضيف إليها إحداثيات الحالة الحالية.</li>
+          <li>يحسب المركز الجغرافي المتوسط <code>center_lat</code> و<code>center_long</code>.</li>
+          <li>يحسب نصف القطر كأبعد مسافة عن هذا المركز.</li>
+          <li>يحوّل <code>alert_level</code> إلى <code>risk_level</code>.</li>
+          <li>إذا وجد cluster قريبًا خلال آخر 30 يومًا، يحدثه بدل إنشاء واحد جديد.</li>
+        </ol>
+        <p>
+          هذه خدمة تشغيلية مهمة لأنها تمثل “الطبقة المرئية” للخطر على الخريطة.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Orchestration</span>
+        <h3>9. الملف <code>monitoring_service.py</code></h3>
+        <p><strong>وظيفته:</strong> تشغيل كامل pipeline المراقبة على سجل <code>GeoData</code> واحد.</p>
+        <h4>تسلسل العمل</h4>
+        <ol>
+          <li>بناء <code>VisitOutbreakContext</code> من الـ GeoData.</li>
+          <li>جلب سياسة المرض عبر <code>get_policy_for_disease</code>.</li>
+          <li>تشغيل <code>evaluate_visit_outbreak</code>.</li>
+          <li>إنشاء تقرير إذا أمكن.</li>
+          <li>إنشاء cluster إذا أمكن.</li>
+          <li>إرجاع نتيجة منظمة تحتوي على context وpolicy وanalysis وpersistence.</li>
+        </ol>
+        <p>
+          هذه الخدمة هي orchestrator حقيقي، ولذلك هي مرتبطة مباشرة بـ <code>signals.py</code> لتفعيل
+          المراقبة تلقائيًا بعد حفظ بيانات الموقع.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Time-Series Anomaly Detection</span>
+        <span class="tag">AI Layer</span>
+        <h3>10. الملف <code>anomaly_detection.py</code></h3>
+        <p><strong>هذا الملف يكتشف الشذوذ الزمني في النشاط المرضي.</strong></p>
+        <h4>الفكرة الإحصائية</h4>
+        <p>
+          بدل تحليل زيارة واحدة، هذا الملف ينظر إلى السلسلة الزمنية اليومية لكل مرض ولكل نوع منطقة
+          <code>region_type</code>، ثم يسأل: هل عدد الحالات في يوم معين شاذ بشكل واضح مقارنة بالـ baseline
+          القريب منه؟
+        </p>
+        <h4>كيف يبني السلسلة؟</h4>
+        <ul>
+          <li>يجمع عدد الحالات يوميًا من <code>GeoData</code> مع عد distinct للزيارات.</li>
+          <li>يفصل السلاسل حسب الزوج <code>(disease_id, region_type)</code>.</li>
+          <li>يملأ الأيام المفقودة بصفر حتى لا تنكسر السلسلة الزمنية.</li>
+        </ul>
+        <h4>المؤشرات المستخدمة</h4>
+        <ul>
+          <li><code>baseline_mean</code>: متوسط القيم السابقة.</li>
+          <li><code>baseline_median</code>: الوسيط.</li>
+          <li><code>baseline_max</code>: أعلى قيمة تاريخية في النافذة.</li>
+          <li><code>surge_ratio</code>: نسبة الارتفاع مقارنة بالمتوسط.</li>
+          <li><code>deviation_score</code>: درجة الانحراف باستخدام <strong>MAD</strong>.</li>
+        </ul>
+        <h4>معادلة الانحراف</h4>
+        <pre>deviation_score = 0.6745 * (observed - baseline_median) / MAD</pre>
+        <p>
+          استخدام <strong>Median Absolute Deviation</strong> مهم لأنه أكثر مقاومة للقيم الشاذة من
+          الاعتماد على mean/std فقط.
+        </p>
+        <h4>حساب anomaly_score</h4>
+        <ul>
+          <li>إذا كان baseline صفرًا والنشاط الجديد تجاوز العتبة الدنيا، يحصل على نقاط بداية.</li>
+          <li>تضاف نقاط من الفرق عن المتوسط.</li>
+          <li>تضاف نقاط من <code>surge_ratio</code>.</li>
+          <li>تضاف نقاط من <code>deviation_score</code>.</li>
+          <li>تضاف نقاط إضافية إذا كان المرض عالي الأولوية أو نادرًا.</li>
+        </ul>
+        <p>
+          ثم يتم تحويل <code>anomaly_score</code> إلى <code>low / medium / high / critical</code>،
+          وتصفية النتائج الضعيفة غير المهمة.
+        </p>
+        <p>
+          هذا الملف من أكثر الملفات “ذكاءً” في المشروع لأنه لا يكتفي بعدّ الحالات، بل يقارنها بسلوك
+          زمني تاريخي ويستخرج شذوذًا meaningful.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Spatial Clustering</span>
+        <span class="tag">AI Layer</span>
+        <h3>11. الملف <code>dbscan_hotspots.py</code></h3>
+        <p><strong>هذا الملف يطبق خوارزمية DBSCAN-like clustering بطريقة يدوية.</strong></p>
+        <h4>لماذا DBSCAN؟</h4>
+        <p>
+          لأنها خوارزمية مناسبة لاكتشاف التجمعات المكانية من نقاط غير معروفة العدد مسبقًا، وتستطيع فصل
+          الضوضاء <code>noise</code> عن clusters الفعلية.
+        </p>
+        <h4>كيف نُفذت هنا؟</h4>
+        <ol>
+          <li>جمع النقاط من <code>GeoData</code> داخل نافذة زمنية أو نطاق تاريخ.</li>
+          <li>تقسيم النقاط حسب المرض.</li>
+          <li>لكل نقطة، تنفيذ <code>_region_query</code> للبحث عن الجيران داخل <code>eps_km</code>.</li>
+          <li>إذا كان عدد الجيران أقل من <code>min_samples</code> تصنف كنقطة ضوضاء.</li>
+          <li>إذا استوفت الشرط، يبدأ توسيع cluster عبر seeds مثل DBSCAN الكلاسيكية.</li>
+          <li>بعد اكتمال الأعضاء، يتم حساب مركز cluster ونصف قطره وتاريخ بدايته ونهايته.</li>
+        </ol>
+        <h4>ملاحظات مهمة عن التطبيق</h4>
+        <ul>
+          <li>التطبيق هنا يدوي وليس من مكتبة خارجية.</li>
+          <li>التعقيد الحسابي أقرب إلى <code>O(n^2)</code> لأن البحث عن الجيران يمر على كل النقاط.</li>
+          <li>هذا مقبول لبيانات صغيرة أو متوسطة، لكنه يحتاج spatial index لو كبر الحجم.</li>
+        </ul>
+        <h4>الحفظ</h4>
+        <p>
+          بعد الاكتشاف، يمكن تمرير النتائج إلى <code>persist_dbscan_clusters</code> الذي يدمجها مع
+          clusters قريبة موجودة بدل إنشاء duplicates كثيرة.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Feature Engineering</span>
+        <span class="tag">Data Pipeline</span>
+        <h3>12. الملف <code>dataset_export.py</code></h3>
+        <p><strong>وظيفته:</strong> استخراج بيانات جاهزة للتحليل أو التدريب بصيغتين رئيسيتين.</p>
+        <h4>الملف الأول: <code>visit_level_dataset.csv</code></h4>
+        <p>كل صف يمثل زيارة واحدة ويحتوي features مثل:</p>
+        <ul>
+          <li>بيانات المريض: الجنس، العمر.</li>
+          <li>بيانات الزيارة: التاريخ، الحالة الاجتماعية، الوزن، الطول، BMI.</li>
+          <li>بيانات المرض: نوعه، <code>risk_level</code>، <code>infection_score</code>، <code>policy_profile</code>.</li>
+          <li>بيانات جغرافية: primary region, geodata count, home/work flags.</li>
+          <li>بيانات المختبر: عدد الفحوص وعدد النتائج غير الطبيعية.</li>
+          <li>بيانات التقارير: آخر alert level وآخر risk score وعدد التنبيهات النشطة.</li>
+        </ul>
+        <h4>الملف الثاني: <code>disease_region_day_dataset.csv</code></h4>
+        <p>كل صف يمثل يومًا + مرضًا + نوع منطقة، ويجمع metrics مثل:</p>
+        <ul>
+          <li>عدد الزيارات والمرضى والأطباء والمشافي.</li>
+          <li>المتوسطات الجغرافية للإحداثيات.</li>
+          <li>عدد الفحوص المختبرية غير الطبيعية.</li>
+          <li>عدد التنبيهات النشطة عالية ومتوسطة وحرجة.</li>
+          <li>عدد الـ hotspots النشطة.</li>
+        </ul>
+        <p>
+          هذا الملف مهم جدًا لأنه يقوم بعملية <strong>feature engineering</strong> فعلية، أي تحويل
+          البيانات التشغيلية إلى تمثيل يصلح للتعلم الآلي والـ dashboards والبحوث.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Knowledge Enrichment</span>
+        <h3>13. الملف <code>disease_reference.py</code></h3>
+        <p><strong>وظيفته:</strong> تصنيف الأمراض المرجعية المستوردة وإعطاؤها profile تشغيليًا.</p>
+        <h4>لماذا نحتاجه؟</h4>
+        <p>
+          لأن استيراد الأمراض من CSV وحده لا يكفي. يجب أن تتحول هذه الأمراض إلى معلومات تشغيلية تساعد
+          طبقة الذكاء الاصطناعي لاحقًا.
+        </p>
+        <h4>كيف يصنف المرض؟</h4>
+        <ul>
+          <li>إذا كان الكود ضمن الأمراض النادرة، يصبح <code>policy_profile = rare</code>.</li>
+          <li>إذا كان ضمن الأمراض البيئية التنفسية، يصبح <code>environmental_signal</code>.</li>
+          <li>إذا كان مرضًا معويًا أو food/waterborne، يصبح <code>cluster_sensitive</code>.</li>
+          <li>إذا كان تنفسيًا أو respiratory-driven، يصبح <code>surge_sensitive</code>.</li>
+          <li>إذا كانت الخطورة مرتفعة جدًا، قد يصبح <code>high_priority</code>.</li>
+        </ul>
+        <p>
+          هذا الملف يربط بين taxonomy الطبية وبين سلوك المحرك الذكي. بمعنى آخر: هو layer ترجمة من
+          “بيانات مرجعية” إلى “سياسة تشغيل”.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Supervised Learning</span>
+        <span class="tag">AI Layer</span>
+        <h3>14. الملف <code>risk_prediction.py</code></h3>
+        <p><strong>هذا الملف يمثل تجربة التعلم الخاضع للإشراف داخل المشروع.</strong></p>
+        <h4>الفكرة العامة</h4>
+        <p>
+          بدل استخدام مكتبة ML خارجية، تم بناء نموذج baseline بسيط وقابل للشرح يعتمد على
+          <strong>Nearest Centroid Classification</strong>.
+        </p>
+        <h4>كيف تُبنى الـ features؟</h4>
+        <p>الدالة <code>build_visit_feature_map</code> تبني vector للزيارة يضم:</p>
+        <ul>
+          <li>شدة المرض وخطورة العدوى.</li>
+          <li>أعلام <code>high_priority</code> و<code>rare</code>.</li>
+          <li>العمر وBMI.</li>
+          <li>عدد سجلات GeoData ونوع المنطقة الأساسية.</li>
+          <li>عدد الاختبارات غير الطبيعية.</li>
+          <li>آخر risk score وعدد التنبيهات النشطة.</li>
+          <li>المسافة لأقرب hotspot وهل الزيارة قريبة من hotspot.</li>
+          <li>تمثيل one-hot لـ <code>policy_profile</code>.</li>
+        </ul>
+        <h4>من أين تأتي الـ labels؟</h4>
+        <ol>
+          <li>أولًا من التقارير الموجودة إذا كانت هناك تقارير مرتبطة بالزيارة.</li>
+          <li>إن لم توجد تقارير، يتم توليد label من <code>outbreak_engine</code> نفسه.</li>
+        </ol>
+        <p>
+          هذا يعني أن النموذج يتعلم جزئيًا من الخبرة التشغيلية المخزنة، وجزئيًا من المحرك القاعدي الحالي.
+        </p>
+        <h4>كيف يتم التدريب؟</h4>
+        <ol>
+          <li>تجميع كل الزيارات وتحويلها إلى samples.</li>
+          <li>تطبيع كل feature بطريقة <code>min-max normalization</code>.</li>
+          <li>حساب centroid لكل label من labels الأربع: <code>low, medium, high, critical</code>.</li>
+          <li>حفظ النتائج في ملف JSON يحتوي feature bounds وclass centroids.</li>
+        </ol>
+        <h4>كيف يتم التنبؤ؟</h4>
+        <ol>
+          <li>بناء feature vector جديد للزيارة.</li>
+          <li>تطبيعه بنفس حدود training.</li>
+          <li>حساب <code>Euclidean distance</code> بينه وبين centroid كل فئة.</li>
+          <li>اختيار الفئة ذات أصغر مسافة.</li>
+          <li>حساب confidence تقريبية عبر inverse distance weighting.</li>
+        </ol>
+        <pre>predicted_label = argmin(distance_to_centroid)
+confidence = inverse_distance(predicted) / sum(all_inverse_distances)</pre>
+        <h4>لماذا هذا النموذج مهم؟</h4>
+        <p>
+          لأنه بسيط جدًا، مفهوم جدًا، ومناسب لمشروع أكاديمي أو نسخة أولية من النظام. كل prediction هنا
+          قابل للتفسير، ويمكن عرض المسافات لكل class بدل إعطاء label بلا تفسير.
+        </p>
+        <h4>لكن ما حدوده؟</h4>
+        <ul>
+          <li>ليس فيه train/test split داخل الخدمة نفسها.</li>
+          <li>ليس فيه tuning أو cross-validation.</li>
+          <li>تعقيده منخفض جدًا مقارنة بنماذج ML الاحترافية.</li>
+          <li>يعتمد على جودة labels المولدة من التقارير أو من المحرك القاعدي.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section id="commands" class="page-break">
+      <h2>الأوامر الإدارية المرتبطة بطبقة التحليل</h2>
+      <p>إلى جانب ملفات الخدمات، يوجد عدد من أوامر <code>management commands</code> التي تشغل الطبقة الذكية عمليًا:</p>
+      <ul>
+        <li><code>python manage.py import_diseases --csv-path ...</code>: استيراد الأمراض المرجعية وتصنيفها.</li>
+        <li><code>python manage.py export_ai_dataset --output-dir ...</code>: تصدير datasets جاهزة للتدريب أو البحث.</li>
+        <li><code>python manage.py train_risk_model --output-path ...</code>: تدريب نموذج المخاطر baseline.</li>
+        <li><code>python manage.py predict_risk --visit-id ... --model-path ...</code>: التنبؤ بمستوى الخطر لزيارة معينة.</li>
+        <li><code>python manage.py run_anomaly_detection ...</code>: استخراج الشذوذات الزمنية.</li>
+        <li><code>python manage.py run_dbscan_hotspots ...</code>: استخراج hotspots مكانية بأسلوب DBSCAN.</li>
+      </ul>
+      <p>
+        وجود هذه الأوامر يعني أن طبقة الذكاء الاصطناعي ليست محصورة فقط داخل API، بل يمكن تشغيلها batch
+        أيضًا من سطر الأوامر.
+      </p>
+    </section>
+
+    <section id="flows">
+      <h2>سيناريوهات التشغيل الفعلية</h2>
+      <h3>1. سيناريو المراقبة التلقائية بعد حفظ GeoData</h3>
+      <ol>
+        <li>يحفظ النظام سجل <code>GeoData</code>.</li>
+        <li>يشغّل <code>signals.py</code> خدمة <code>run_monitoring_for_geodata</code> بعد <code>transaction.on_commit</code>.</li>
+        <li>تُبنى السياسة والسياق.</li>
+        <li>يعمل محرك التفشي.</li>
+        <li>قد يُنشأ تقرير و/أو cluster تلقائيًا.</li>
+      </ol>
+
+      <h3>2. سيناريو تقييم outbreak يدويًا من الـ API</h3>
+      <ol>
+        <li>يطلب العميل <code>/api/visits/&lt;id&gt;/evaluate_outbreak/</code>.</li>
+        <li>تختار الواجهة GeoData المناسب.</li>
+        <li>تجلب السياسة المناسبة للمرض.</li>
+        <li>يعاد للمستخدم policy + analysis + persistence status.</li>
+      </ol>
+
+      <h3>3. سيناريو التنبؤ بالمخاطر</h3>
+      <ol>
+        <li>تصدير أو تجهيز البيانات الحالية.</li>
+        <li>تدريب نموذج baseline.</li>
+        <li>طلب <code>/api/visits/&lt;id&gt;/predict_risk/</code> أو أمر <code>predict_risk</code>.</li>
+        <li>إرجاع predicted label + confidence + feature values + class distances.</li>
+      </ol>
+    </section>
+
+    <section id="strengths">
+      <h2>نقاط القوة والحدود الحالية</h2>
+      <div class="grid">
+        <div class="mini">
+          <h4>نقاط القوة</h4>
+          <ul>
+            <li>فصل ممتاز بين الواجهة والخدمات.</li>
+            <li>طبقة AI قابلة للفهم والتفسير.</li>
+            <li>وجود تحليل مكاني وزمني وتعلم خاضع للإشراف في مشروع واحد.</li>
+            <li>إمكانية التشغيل API + commands + signals.</li>
+            <li>وجود datasets جاهزة للتصدير والبحث.</li>
+          </ul>
+        </div>
+        <div class="mini">
+          <h4>الحدود الحالية</h4>
+          <ul>
+            <li>SQLite جيد للبروتوتايب لكنه ليس الأفضل للأحمال الكبيرة.</li>
+            <li>حسابات DBSCAN والجوار تعتمد على loops وقد تصبح أبطأ مع البيانات الكبيرة.</li>
+            <li>نموذج المخاطر baseline وليس نموذجًا بحثيًا متقدمًا.</li>
+            <li>الذكاء القاعدي يعتمد بقوة على جودة disease metadata.</li>
+            <li>لا توجد حاليًا spatial indexes أو PostgreSQL/PostGIS.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>الخاتمة</h2>
+      <p>
+        لو أردت وصف المشروع بجملة واحدة، فالوصف الأقرب هو:
+        <strong>نظام مراقبة وبائية مبني على Django، يستخدم طبقة خدمات منظمة لتطبيق ذكاء هجين يجمع بين
+        القواعد الخبرائية، التحليل الزمني، التحليل المكاني، والتنبؤ المبسط بالمخاطر.</strong>
+      </p>
+      <p>
+        وأهم ملفين لشرح “الذكاء” فيه هما <code>alert_policies.py</code> لأنه يمثل المعرفة الطبية/التشغيلية،
+        و<code>outbreak_engine.py</code> لأنه يحول هذه المعرفة إلى قرار. ثم تأتي فوقهما طبقات مكملة:
+        <code>anomaly_detection.py</code> للشذوذ الزمني، <code>dbscan_hotspots.py</code> للتجمعات المكانية،
+        و<code>risk_prediction.py</code> للتنبؤ الإشرافي.
+      </p>
+      <p>
+        إذا احتجت لاحقًا، يمكن بسهولة تحويل هذه الوثيقة إلى نسخة ثانية أكثر أكاديمية، أو نسخة موجهة للعرض
+        الشفهي، أو نسخة مختصرة لعرض التخرج.
+      </p>
+      <p class="small">
+        تم إعداد هذه الوثيقة بناءً على الحالة الحالية للملفات الموجودة في <code>src/core/services</code>
+        وملفات الـ API والإعدادات المرتبطة بها داخل المشروع.
+      </p>
+    </section>
+  </div>
+</body>
+</html>

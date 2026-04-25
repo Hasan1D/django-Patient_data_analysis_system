@@ -1,5 +1,8 @@
 from datetime import timedelta
 
+from core.models import Visit
+
+from .active_cases import is_active_visit_in_queryset
 from .contracts import AlertLevel, DiseaseAlertPolicy, OutbreakAnalysis, TrendSnapshot, VisitOutbreakContext
 from .spatial import find_nearby_cases
 from .trend import build_trend_snapshot
@@ -162,19 +165,15 @@ def evaluate_visit_outbreak(
     It returns a pure decision object and does not write to the database.
     """
     region_filter = policy.region_type
-    nearby_cases = find_nearby_cases(
-        context=context,
-        radius_km=policy.radius_km,
-        lookback_days=policy.lookback_days,
-        region_type=region_filter,
-    )
-    nearby_case_count = len(nearby_cases)
-    total_local_cases = nearby_case_count + 1
-
     current_start, current_end, previous_start, previous_end = _build_time_windows(
         diagnosis_date=context.diagnosis_date,
         lookback_days=policy.lookback_days,
         baseline_window_days=policy.baseline_window_days,
+    )
+    current_window_visits = Visit.objects.filter(
+        disease_id=context.disease_id,
+        diagnosis_date__gte=current_start,
+        diagnosis_date__lte=current_end,
     )
     trend = build_trend_snapshot(
         disease_id=context.disease_id,
@@ -184,6 +183,53 @@ def evaluate_visit_outbreak(
         previous_end=previous_end,
         region_type=region_filter,
     )
+
+    context_is_active = True
+    if context.visit_id:
+        context_is_active = is_active_visit_in_queryset(
+            visit_id=context.visit_id,
+            queryset=current_window_visits,
+        )
+
+    if not context_is_active:
+        return OutbreakAnalysis(
+            alert_level="no_alert",
+            score=0.0,
+            reasons=["Latest patient+disease visit is not infected."],
+            nearby_case_count=0,
+            matched_case_ids=[],
+            trend=trend,
+            should_create_report=False,
+            should_create_cluster=False,
+            metadata={
+                "local_case_count": 0,
+                "context_active": False,
+                "region_filter": region_filter,
+                "score_breakdown": {
+                    "severity_points": 0.0,
+                    "density_points": 0.0,
+                    "trend_points": 0.0,
+                    "rarity_points": 0.0,
+                },
+                "current_window": {
+                    "start": current_start.isoformat(),
+                    "end": current_end.isoformat(),
+                },
+                "previous_window": {
+                    "start": previous_start.isoformat(),
+                    "end": previous_end.isoformat(),
+                },
+            },
+        )
+
+    nearby_cases = find_nearby_cases(
+        context=context,
+        radius_km=policy.radius_km,
+        lookback_days=policy.lookback_days,
+        region_type=region_filter,
+    )
+    nearby_case_count = len(nearby_cases)
+    total_local_cases = nearby_case_count + 1
 
     severity_points = 8 * policy.severity_weight + (6 if policy.high_priority else 0)
     density_points = 20 * policy.density_weight * _density_factor(
@@ -229,6 +275,7 @@ def evaluate_visit_outbreak(
         should_create_cluster=should_create_cluster,
         metadata={
             "local_case_count": total_local_cases,
+            "context_active": True,
             "region_filter": region_filter,
             "score_breakdown": {
                 "severity_points": round(severity_points, 2),

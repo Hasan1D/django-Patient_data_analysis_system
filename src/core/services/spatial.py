@@ -1,8 +1,9 @@
 from datetime import timedelta
 from math import asin, cos, radians, sin, sqrt
 
-from core.models import GeoData
+from core.models import GeoData, Visit
 
+from .active_cases import active_visits_queryset
 from .contracts import NearbyCase, VisitOutbreakContext
 
 
@@ -45,18 +46,20 @@ def find_nearby_cases(
 
     window_start = context.diagnosis_date - timedelta(days=lookback_days)
 
-    candidates = GeoData.objects.select_related("visit").filter(
-        visit__disease_id=context.disease_id,
-        visit__diagnosis_date__gte=window_start,
-        visit__diagnosis_date__lte=context.diagnosis_date,
+    visits = Visit.objects.filter(
+        disease_id=context.disease_id,
+        diagnosis_date__gte=window_start,
+        diagnosis_date__lte=context.diagnosis_date,
     )
 
+    active_visit_ids = active_visits_queryset(visits).values("id")
+    candidates = GeoData.objects.select_related("visit").filter(visit_id__in=active_visit_ids)
     if context.visit_id:
         candidates = candidates.exclude(visit_id=context.visit_id)
     if region_type:
         candidates = candidates.filter(region_type=region_type)
 
-    nearby_cases: list[NearbyCase] = []
+    nearby_cases_by_visit: dict[int, NearbyCase] = {}
 
     for candidate in candidates:
         candidate_distance = distance_km(
@@ -65,20 +68,23 @@ def find_nearby_cases(
             candidate.latitude,
             candidate.longitude,
         )
-        if candidate_distance <= radius_km:
-            nearby_cases.append(
-                NearbyCase(
-                    visit_id=candidate.visit_id,
-                    patient_id=candidate.patient_id,
-                    diagnosis_date=candidate.visit.diagnosis_date,
-                    latitude=candidate.latitude,
-                    longitude=candidate.longitude,
-                    region_type=candidate.region_type,
-                    distance_km=round(candidate_distance, 4),
-                )
-            )
+        if candidate_distance > radius_km:
+            continue
+
+        nearby_case = NearbyCase(
+            visit_id=candidate.visit_id,
+            patient_id=candidate.patient_id,
+            diagnosis_date=candidate.visit.diagnosis_date,
+            latitude=candidate.latitude,
+            longitude=candidate.longitude,
+            region_type=candidate.region_type,
+            distance_km=round(candidate_distance, 4),
+        )
+        current_nearest = nearby_cases_by_visit.get(candidate.visit_id)
+        if current_nearest is None or nearby_case.distance_km < current_nearest.distance_km:
+            nearby_cases_by_visit[candidate.visit_id] = nearby_case
 
     return sorted(
-        nearby_cases,
+        nearby_cases_by_visit.values(),
         key=lambda item: (item.distance_km, item.diagnosis_date, item.visit_id),
     )

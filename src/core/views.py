@@ -1,7 +1,7 @@
 from dataclasses import asdict, replace
 from datetime import timedelta
 
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_date
 from django_filters.rest_framework import DjangoFilterBackend
@@ -26,6 +26,11 @@ from .serializers import (
     VisitSerializer,
 )
 from .services import VisitOutbreakContext
+from .services.active_cases import (
+    active_geodata_queryset,
+    active_visits_queryset,
+    one_geodata_per_visit_queryset,
+)
 from .services.alert_policies import get_policy_for_disease
 from .services.anomaly_detection import (
     detect_temporal_anomalies,
@@ -150,10 +155,11 @@ def _to_float(value, default: float | None = None) -> float | None:
 
 
 def _active_alerts_queryset(queryset):
+    active_trigger_visit_ids = active_visits_queryset(Visit.objects.all()).values("id")
     return queryset.filter(
         status__in=("new", "reviewed"),
         alert_level__in=("medium", "high", "critical"),
-    )
+    ).filter(Q(trigger_visit__isnull=True) | Q(trigger_visit_id__in=active_trigger_visit_ids))
 
 
 def _active_hotspots_queryset(queryset):
@@ -306,7 +312,7 @@ class VisitViewSet(viewsets.ModelViewSet):
             "messages": [],
         }
         if save_report or save_cluster:
-            if request.user.role != "admin":
+            if request.user.role != User.ROLE_ADMIN:
                 return Response(
                     {"error": "Only admin can persist outbreak outputs."},
                     status=status.HTTP_403_FORBIDDEN,
@@ -371,6 +377,15 @@ class GeoDataViewSet(viewsets.ModelViewSet):
     queryset = GeoData.objects.all()
     serializer_class = GeoDataSerializer
     permission_classes = [IsDoctorOrAdmin]
+
+    @action(detail=False, methods=["get"])
+    def active(self, request):
+        visits = VisitFilter(request.GET, queryset=Visit.objects.all()).qs
+        geodata = active_geodata_queryset(GeoData.objects.all(), visit_queryset=visits)
+        geodata = GeoDataFilter(request.GET, queryset=geodata).qs
+        geodata = one_geodata_per_visit_queryset(geodata).order_by("visit__diagnosis_date", "id")
+        serializer = self.get_serializer(geodata, many=True)
+        return Response(serializer.data)
 
 
 class GeoClusterViewSet(viewsets.ModelViewSet):
@@ -486,11 +501,13 @@ class ReportViewSet(viewsets.ModelViewSet):
     def dashboard_summary(self, request):
         active_reports = _active_alerts_queryset(self.get_queryset())
         active_clusters = _active_hotspots_queryset(GeoCluster.objects.all())
+        active_visits = active_visits_queryset(Visit.objects.all())
 
         disease_id = request.query_params.get("disease")
         if disease_id:
             active_reports = active_reports.filter(disease_id=disease_id)
             active_clusters = active_clusters.filter(disease_id=disease_id)
+            active_visits = active_visits.filter(disease_id=disease_id)
 
         top_alert = active_reports.order_by("-risk_score", "-generated_at").first()
         top_hotspot = active_clusters.order_by("-risk_level", "-case_count", "-generated_at").first()
@@ -514,6 +531,7 @@ class ReportViewSet(viewsets.ModelViewSet):
                     "new_alert_count": active_reports.filter(status="new").count(),
                     "reviewed_alert_count": active_reports.filter(status="reviewed").count(),
                     "active_hotspot_count": active_clusters.count(),
+                    "active_case_count": active_visits.count(),
                 },
                 "top_alert": ReportSerializer(top_alert).data if top_alert else None,
                 "top_hotspot": GeoClusterSerializer(top_hotspot).data if top_hotspot else None,

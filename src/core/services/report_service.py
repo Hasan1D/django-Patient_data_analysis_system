@@ -145,6 +145,10 @@ def create_report_from_analysis(
             existing_report.risk_score = max(existing_report.risk_score, analysis.score)
         if analysis.should_create_report:
             existing_report.status = "new"
+        elif analysis.metadata.get("context_active") is False and current_case_count == 0:
+            existing_report.alert_level = normalized_alert_level
+            existing_report.risk_score = analysis.score
+            existing_report.status = "resolved"
 
     existing_report.save()
     return existing_report.id

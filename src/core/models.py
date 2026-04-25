@@ -7,9 +7,26 @@ from django.contrib.auth.models import AbstractUser
 # Create your models here.
 
 class User(AbstractUser) :
+    ROLE_ADMIN = "admin"
+    ROLE_DOCTOR = "doctor"
+    ROLE_CHOICES = [
+        (ROLE_ADMIN, "Admin"),
+        (ROLE_DOCTOR, "Doctor"),
+    ]
+
     real_name = models.CharField(max_length=255)
     phon_number = models.CharField(max_length=20)
-    role = models.CharField(max_length=50)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+
+    class Meta:
+        verbose_name = "user"
+        verbose_name_plural = "users"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(role__in=["admin", "doctor"]),
+                name="core_user_role_admin_or_doctor",
+            ),
+        ]
     
     
     def __str__(self):

@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>توثيق طبقة Management Commands</title>
+  <style>
+    :root {
+      --bg: #f6f4ef;
+      --paper: #fffdfa;
+      --ink: #1f2937;
+      --muted: #616b75;
+      --line: #ddd5c8;
+      --accent: #8b3d2c;
+      --soft: #f7e6db;
+      --code: #f2eee7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(139, 61, 44, 0.08), transparent 24rem),
+        linear-gradient(180deg, #f1ebdf 0%, var(--bg) 100%);
+      color: var(--ink);
+      font-family: "Tahoma", "Arial", sans-serif;
+      line-height: 1.9;
+    }
+
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 18mm 16mm;
+      background: var(--paper);
+    }
+
+    header {
+      border-bottom: 2px solid var(--line);
+      padding-bottom: 12px;
+      margin-bottom: 22px;
+    }
+
+    h1, h2, h3, h4 {
+      margin: 0 0 10px;
+      line-height: 1.5;
+    }
+
+    h1 {
+      font-size: 28px;
+      color: var(--accent);
+    }
+
+    h2 {
+      margin-top: 28px;
+      font-size: 21px;
+      padding: 10px 12px;
+      background: var(--soft);
+      border-right: 5px solid var(--accent);
+      border-radius: 10px;
+    }
+
+    h3 {
+      margin-top: 20px;
+      font-size: 18px;
+      color: #7a3728;
+    }
+
+    h4 {
+      margin-top: 14px;
+      font-size: 16px;
+      color: #344154;
+    }
+
+    p {
+      margin: 8px 0;
+      font-size: 14px;
+    }
+
+    ul, ol {
+      margin: 8px 0 12px;
+      padding-right: 22px;
+    }
+
+    li {
+      margin: 4px 0;
+      font-size: 14px;
+    }
+
+    code {
+      font-family: "Consolas", "Courier New", monospace;
+      background: var(--code);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--code);
+      border: 1px solid #ddd3c5;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .lead {
+      font-size: 15px;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .callout {
+      margin: 16px 0;
+      padding: 14px 16px;
+      background: #fbf7f0;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+
+    .file-card {
+      margin-top: 18px;
+      padding: 14px 16px;
+      background: #fffaf3;
+      border: 1px solid #e7dbc9;
+      border-radius: 14px;
+      break-inside: avoid;
+    }
+
+    .tag {
+      display: inline-block;
+      margin-left: 6px;
+      margin-bottom: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: #5c2d22;
+      background: #f3dfd2;
+      border-radius: 999px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mini {
+      padding: 12px;
+      background: #fcf8f1;
+      border: 1px solid #eadfd1;
+      border-radius: 12px;
+    }
+
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        padding: 10mm 8mm;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>توثيق طبقة Management Commands في المشروع</h1>
+      <p class="lead">
+        هذه الوثيقة تشرح مجلد <code>core/management</code> بالكامل، وبالتحديد الأوامر الموجودة داخل
+        <code>core/management/commands</code>، مع توضيح هدف كل command، شكل الـ arguments، تدفق التنفيذ
+        داخل الكود، وعلاقته بطبقة الخدمات <code>core/services</code>.
+      </p>
+      <p class="meta">
+        المشروع: <code>django-Patient_data_analysis_system</code><br>
+        تاريخ التوثيق: 2026-04-23
+      </p>
+    </header>
+
+    <section>
+      <h2>رسالة افتتاحية</h2>
+      <p>
+        في Django، مجلد <code>management/commands</code> ليس مجرد مكان لتجميع سكربتات متفرقة، بل هو
+        وسيلة رسمية لتمديد أوامر <code>manage.py</code> بأوامر مخصصة للمشروع. هذا يجعل العمليات غير
+        التفاعلية مثل الاستيراد، التصدير، التدريب، التحليل الدوري، أو تنفيذ مهام batch جزءًا طبيعيًا
+        من بنية التطبيق بدل أن تكون ملفات خارجية منفصلة.
+      </p>
+      <p>
+        في هذا المشروع، طبقة <code>management commands</code> تعمل كواجهة تشغيل نصية لطبقة الذكاء
+        الاصطناعي والتحليل. بمعنى أن الخدمات التحليلية موجودة داخل <code>core/services</code>، لكن
+        أوامر الإدارة تمنحنا طريقة مريحة وآمنة لتشغيلها من الطرفية.
+      </p>
+    </section>
+
+    <section>
+      <h2>الفكرة العامة لطبقة Management</h2>
+      <div class="grid">
+        <div class="mini">
+          <h4>ما الذي تفعله هذه الطبقة؟</h4>
+          <ul>
+            <li>تشغّل وظائف تحليلية من الطرفية.</li>
+            <li>تحول الخدمات إلى أوامر CLI واضحة.</li>
+            <li>تتحقق من صحة arguments قبل التنفيذ.</li>
+            <li>تعرض نتائج قابلة للقراءة للمشغل أو المطور.</li>
+          </ul>
+        </div>
+        <div class="mini">
+          <h4>لماذا هي مهمة؟</h4>
+          <ul>
+            <li>مناسبة للتشغيل اليدوي أو التلقائي.</li>
+            <li>تسهل ربط المشروع مع cron أو task scheduler.</li>
+            <li>مفيدة في الاختبار والتجهيز السريع للبيانات.</li>
+            <li>تفصل بين منطق التشغيل ومنطق التحليل نفسه.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout">
+        <p>
+          القاعدة المعمارية هنا جميلة: الأوامر نفسها تبقى رفيعة <strong>thin layer</strong>، بينما
+          المنطق الحقيقي يبقى داخل الخدمات. هذا يعني أن command ليس هو المكان الذي “يفكر” فيه النظام،
+          بل هو المكان الذي “يشغّل” فيه التفكير الموجود أصلًا داخل service layer.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>نمط الكود المشترك بين جميع الأوامر</h2>
+      <p>جميع الملفات تقريبًا تتبع نفس الهيكل:</p>
+      <pre>class Command(BaseCommand):
+    help = "..."
+
+    def add_arguments(self, parser):
+        parser.add_argument(...)
+
+    def handle(self, *args, **options):
+        ...
+        self.stdout.write(...)
+</pre>
+      <h4>معنى هذا النمط</h4>
+      <ul>
+        <li><code>BaseCommand</code>: الأساس الذي يوفر سلوك أوامر Django.</li>
+        <li><code>help</code>: النص الذي يظهر عند استعراض الأمر أو طلب المساعدة.</li>
+        <li><code>add_arguments()</code>: تعريف المدخلات التي يقبلها الأمر من CLI.</li>
+        <li><code>handle()</code>: نقطة الدخول الفعلية عند تشغيل الأمر.</li>
+        <li><code>CommandError</code>: طريقة Django الرسمية لإظهار أخطاء منطقية للمستخدم.</li>
+      </ul>
+      <p>
+        هذا التصميم يجعل كل command سهل الفهم: أدخل المعطيات، نفذ منطق الخدمة، ثم اطبع النتيجة.
+      </p>
+    </section>
+
+    <section>
+      <h2>البنية الحالية لمجلد Management</h2>
+      <ul>
+        <li><code>core/management/__init__.py</code></li>
+        <li><code>core/management/commands/__init__.py</code></li>
+        <li><code>core/management/commands/import_diseases.py</code></li>
+        <li><code>core/management/commands/export_ai_dataset.py</code></li>
+        <li><code>core/management/commands/train_risk_model.py</code></li>
+        <li><code>core/management/commands/predict_risk.py</code></li>
+        <li><code>core/management/commands/run_anomaly_detection.py</code></li>
+        <li><code>core/management/commands/run_dbscan_hotspots.py</code></li>
+      </ul>
+    </section>
+
+    <section class="page-break">
+      <h2>شرح الملفات ملفًا ملفًا</h2>
+
+      <article class="file-card">
+        <span class="tag">Package Marker</span>
+        <h3>1. الملف <code>core/management/__init__.py</code></h3>
+        <p>
+          هذا الملف فارغ، لكنه ضروري ليعامل Python المجلد كحزمة <code>package</code>.
+        </p>
+        <p>
+          بدون هذا الملف قد لا تستطيع Django اكتشاف بنية management commands بالشكل المتوقع في بعض
+          البيئات أو الأدوات.
+        </p>
+        <p>
+          باختصار: ليس فيه منطق أعمال، لكن له دور بنيوي في تمكين الاكتشاف التلقائي للأوامر.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Package Marker</span>
+        <h3>2. الملف <code>core/management/commands/__init__.py</code></h3>
+        <p>
+          هو أيضًا ملف فارغ، ووظيفته مماثلة: تعريف مجلد <code>commands</code> كحزمة Python.
+        </p>
+        <p>
+          Django تبحث عن أوامر مخصصة داخل المسار:
+          <code>&lt;app&gt;/management/commands/</code>، ولذلك وجود هذا الملف جزء من البنية القياسية.
+        </p>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Data Import</span>
+        <span class="tag">Knowledge Ingestion</span>
+        <h3>3. الملف <code>import_diseases.py</code></h3>
+        <p><strong>الهدف:</strong> استيراد الأمراض المرجعية من ملف CSV مفصول بفاصلة منقوطة <code>;</code>.</p>
+        <h4>لماذا هذا الأمر مهم؟</h4>
+        <p>
+          لأنه نقطة دخول معرفية للنظام. الأمراض لا تُخزّن فقط كأسماء وأكواد، بل تتحول أثناء الاستيراد
+          إلى كيانات لها <code>policy_profile</code> وخصائص مثل <code>high_priority</code> و
+          <code>rare_disease</code>.
+        </p>
+        <h4>arguments</h4>
+        <ul>
+          <li><code>--csv-path</code>: مطلوب، وهو المسار الكامل لملف CSV.</li>
+          <li><code>--source-name</code>: اختياري، ويحدد اسم المصدر المرجعي الذي سيحفظ داخل البيانات.</li>
+        </ul>
+        <h4>كيف يعمل الكود؟</h4>
+        <ol>
+          <li>يبني <code>Path</code> من قيمة <code>csv-path</code>.</li>
+          <li>يتأكد أن الملف موجود وأن امتداده <code>.csv</code>.</li>
+          <li>يفتح الملف بترميز <code>utf-8-sig</code> حتى يتعامل مع BOM إن وجد.</li>
+          <li>يقرأ البيانات عبر <code>csv.DictReader</code> مع delimiter = <code>;</code>.</li>
+          <li>يتأكد من وجود الأعمدة المطلوبة.</li>
+          <li>ينظف القيم النصية ويحوّل الحقول الرقمية إلى <code>int</code> و<code>float</code>.</li>
+          <li>يستدعي <code>classify_reference_disease()</code> من <code>core.services.disease_reference</code>.</li>
+          <li>ينفذ <code>update_or_create</code> على نموذج <code>Disease</code>.</li>
+          <li>يطبع في النهاية عدد السجلات التي أُنشئت وعدد السجلات التي حُدّثت.</li>
+        </ol>
+        <h4>النقطة التقنية الأهم</h4>
+        <p>
+          هذا الأمر لا يستورد البيانات فقط، بل يثريها <strong>enriches data</strong>. أي أنه يدمج طبقة
+          الإدخال مع طبقة التصنيف المعرفي.
+        </p>
+        <h4>مثال تشغيل</h4>
+        <pre>python manage.py import_diseases --csv-path C:\data\diseases.csv</pre>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Dataset Export</span>
+        <span class="tag">AI Pipeline</span>
+        <h3>4. الملف <code>export_ai_dataset.py</code></h3>
+        <p><strong>الهدف:</strong> تصدير بيانات التشغيل الحالية إلى ملفات CSV جاهزة للاستخدام التحليلي أو التدريب.</p>
+        <h4>arguments</h4>
+        <ul>
+          <li><code>--output-dir</code>: مطلوب، ويحدد المجلد الذي ستنشأ بداخله ملفات CSV.</li>
+        </ul>
+        <h4>كيف يعمل الكود؟</h4>
+        <ol>
+          <li>يبني مسار المجلد الهدف باستخدام <code>Path(...).expanduser()</code>.</li>
+          <li>يتأكد أن المسار ليس ملفًا عاديًا.</li>
+          <li>يستدعي <code>export_ai_datasets()</code> من <code>core.services.dataset_export</code>.</li>
+          <li>يطبع عدد الصفوف الناتجة لكل dataset.</li>
+          <li>يطبع المسارات النهائية للملفين الناتجين.</li>
+        </ol>
+        <h4>ما الذي ينتجه فعليًا؟</h4>
+        <ul>
+          <li><code>visit_level_dataset.csv</code></li>
+          <li><code>disease_region_day_dataset.csv</code></li>
+        </ul>
+        <p>
+          هذا الأمر يمثل جسرًا بين قاعدة البيانات التشغيلية وبين طبقة الـ AI أو التحليل الخارجي. هو مفيد
+          جدًا لو أردت لاحقًا تدريب نموذج خارج المشروع أو بناء dashboard في أداة أخرى.
+        </p>
+        <h4>مثال تشغيل</h4>
+        <pre>python manage.py export_ai_dataset --output-dir .\exports</pre>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Training</span>
+        <span class="tag">AI Pipeline</span>
+        <h3>5. الملف <code>train_risk_model.py</code></h3>
+        <p><strong>الهدف:</strong> تدريب نموذج baseline لتنبؤ مخاطر الزيارة.</p>
+        <h4>arguments</h4>
+        <ul>
+          <li><code>--output-path</code>: اختياري، ويحدد أين سيتم حفظ ملف JSON الخاص بالنموذج.</li>
+        </ul>
+        <h4>تسلسل التنفيذ</h4>
+        <ol>
+          <li>إذا مرر المستخدم <code>output-path</code> يتم تحويله إلى <code>Path</code>.</li>
+          <li>يستدعي <code>train_baseline_risk_model()</code> من <code>core.services.risk_prediction</code>.</li>
+          <li>إذا لم توجد عينات كافية أو labels متنوعة بما يكفي، يتم رفع <code>ValueError</code>.</li>
+          <li>الـ command يحول هذا الخطأ إلى <code>CommandError</code> مناسب للـ CLI.</li>
+          <li>إذا نجح التدريب، يطبع عدد العينات، ومسار النموذج، وتوزيع labels.</li>
+        </ol>
+        <h4>ماذا يدير هذا الأمر من بعيد؟</h4>
+        <p>
+          رغم أن الكود في الملف قصير، إلا أنه يشغّل pipeline كاملة تشمل: feature engineering، توليد labels،
+          min-max normalization، حساب centroids، ثم حفظ artifact JSON.
+        </p>
+        <h4>مثال تشغيل</h4>
+        <pre>python manage.py train_risk_model --output-path .\artifacts\risk_model.json</pre>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Inference</span>
+        <span class="tag">AI Pipeline</span>
+        <h3>6. الملف <code>predict_risk.py</code></h3>
+        <p><strong>الهدف:</strong> تنفيذ inference على زيارة معينة باستخدام نموذج المخاطر المدرب.</p>
+        <h4>arguments</h4>
+        <ul>
+          <li><code>--visit-id</code>: مطلوب، وهو الزيارة المستهدفة.</li>
+          <li><code>--model-path</code>: اختياري، لتحديد artifact مخصص بدل المسار الافتراضي.</li>
+        </ul>
+        <h4>كيف يعمل الكود؟</h4>
+        <ol>
+          <li>يحاول جلب الزيارة من <code>Visit.objects.get(id=...)</code>.</li>
+          <li>إذا لم توجد الزيارة، يرفع <code>CommandError("Visit not found.")</code>.</li>
+          <li>يستدعي <code>predict_visit_risk()</code>.</li>
+          <li>إذا لم يوجد ملف النموذج أو كان غير صالح، يتحول الخطأ إلى <code>CommandError</code>.</li>
+          <li>يطبع في النهاية prediction كاملًا بعد تمريره عبر <code>serialize_risk_prediction()</code>.</li>
+        </ol>
+        <h4>أهمية هذا الأمر</h4>
+        <p>
+          هذا الأمر هو واجهة inference النصية للنموذج. مفيد في الاختبار السريع، المقارنة بين زيارات،
+          أو ربطه بسكربتات batch مستقبلية.
+        </p>
+        <h4>مثال تشغيل</h4>
+        <pre>python manage.py predict_risk --visit-id 42 --model-path .\artifacts\risk_model.json</pre>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Time-Series Analysis</span>
+        <span class="tag">Detection</span>
+        <h3>7. الملف <code>run_anomaly_detection.py</code></h3>
+        <p><strong>الهدف:</strong> تشغيل خوارزمية كشف الشذوذ الزمني من الطرفية.</p>
+        <h4>arguments</h4>
+        <ul>
+          <li><code>--disease-id</code>: اختياري لتقييد التحليل على مرض واحد.</li>
+          <li><code>--lookback-days</code>: عدد الأيام الحديثة التي نريد فحصها، الافتراضي 30.</li>
+          <li><code>--baseline-window-days</code>: طول نافذة baseline التاريخية، الافتراضي 7.</li>
+          <li><code>--region-type</code>: اختياري لتقييد التحليل على home أو work أو غيره.</li>
+        </ul>
+        <h4>منطق التنفيذ</h4>
+        <ol>
+          <li>يمرر arguments كما هي تقريبًا إلى <code>detect_temporal_anomalies()</code>.</li>
+          <li>إذا كانت القيم غير منطقية مثل نافذة أصغر من المطلوب، ترفع الخدمة <code>ValueError</code>.</li>
+          <li>الأمر يحول الخطأ إلى <code>CommandError</code>.</li>
+          <li>في حالة النجاح، يطبع عدد الشذوذات المكتشفة.</li>
+          <li>ثم يطبع كل candidate بعد تحويله إلى dict بواسطة <code>serialize_anomaly_candidates()</code>.</li>
+        </ol>
+        <h4>لماذا هذا command مفيد؟</h4>
+        <p>
+          لأنه يحول تحليلًا إحصائيًا مركبًا إلى عملية CLI بسيطة، ويمكن تشغيله يدويًا أو مجدولًا يوميًا
+          أو أسبوعيًا لاكتشاف spikes غير الطبيعية في البيانات.
+        </p>
+        <h4>مثال تشغيل</h4>
+        <pre>python manage.py run_anomaly_detection --lookback-days 45 --baseline-window-days 10</pre>
+      </article>
+
+      <article class="file-card">
+        <span class="tag">Spatial Clustering</span>
+        <span class="tag">Detection</span>
+        <h3>8. الملف <code>run_dbscan_hotspots.py</code></h3>
+        <p><strong>الهدف:</strong> تشغيل اكتشاف hotspots مكانية بخوارزمية DBSCAN-like من CLI.</p>
+        <h4>arguments</h4>
+        <ul>
+          <li><code>--disease-id</code>: اختياري.</li>
+          <li><code>--lookback-days</code>: النافذة الزمنية الافتراضية إذا لم يعط المستخدم range مباشر.</li>
+          <li><code>--date-from</code> و<code>--date-to</code>: لتحديد فترة تاريخية مباشرة.</li>
+          <li><code>--region-type</code>: لتقييد التحليل جغرافيًا حسب نوع المنطقة.</li>
+          <li><code>--eps-km</code>: نصف قطر الجوار بالكيلومترات.</li>
+          <li><code>--min-samples</code>: أقل عدد نقاط لتكوين cluster.</li>
+          <li><code>--persist</code>: إذا وُجد هذا flag، تحفظ النتائج داخل <code>GeoCluster</code>.</li>
+        </ul>
+        <h4>المنطق الداخلي</h4>
+        <ol>
+          <li>يحوّل التواريخ النصية إلى كائنات Date بواسطة <code>parse_date</code>.</li>
+          <li>يتأكد أن التواريخ بصيغة صحيحة.</li>
+          <li>يشغّل <code>detect_dbscan_clusters()</code>.</li>
+          <li>إذا طُلِب الحفظ، يشغّل <code>persist_dbscan_clusters()</code>.</li>
+          <li>يطبع عدد العناقيد المكتشفة وأرقام العناقيد المحفوظة إن وجدت.</li>
+          <li>يطبع تمثيلًا نصيًا لكل cluster candidate.</li>
+        </ol>
+        <h4>القيمة التشغيلية</h4>
+        <p>
+          هذا command مناسب لتشغيل تحليل مكاني على دفعات، خصوصًا إذا أردنا اكتشاف hotspots دورية بدل
+          انتظار التفعيل التلقائي من signals.
+        </p>
+        <h4>مثال تشغيل</h4>
+        <pre>python manage.py run_dbscan_hotspots --lookback-days 21 --eps-km 2.5 --min-samples 3 --persist</pre>
+      </article>
+    </section>
+
+    <section class="page-break">
+      <h2>العلاقة بين Management Commands و Service Layer</h2>
+      <p>
+        أهم نقطة لفهم هذا المجلد هي أن معظم الملفات فيه لا تحتوي خوارزميات كبيرة. هي فقط orchestrators
+        صغيرة تنقل مدخلات الـ CLI إلى خدمات المشروع. العلاقة كالتالي:
+      </p>
+      <ul>
+        <li><code>import_diseases.py</code> يعتمد على <code>disease_reference.py</code>.</li>
+        <li><code>export_ai_dataset.py</code> يعتمد على <code>dataset_export.py</code>.</li>
+        <li><code>train_risk_model.py</code> و<code>predict_risk.py</code> يعتمدان على <code>risk_prediction.py</code>.</li>
+        <li><code>run_anomaly_detection.py</code> يعتمد على <code>anomaly_detection.py</code>.</li>
+        <li><code>run_dbscan_hotspots.py</code> يعتمد على <code>dbscan_hotspots.py</code>.</li>
+      </ul>
+      <div class="callout">
+        <p>
+          هذا يعني أن command هنا هو <strong>واجهة تشغيل</strong> وليس <strong>مكان المنطق</strong>.
+          وهذه نقطة تصميم ممتازة لأنها تمنع تكرار الكود وتسمح بإعادة استخدام نفس الخدمة من API أو tests
+          أو signals أو commands.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>قوة تصميم هذه الطبقة</h2>
+      <ul>
+        <li>الأوامر قصيرة وواضحة، فلا تتضخم بشكل يصعب صيانته.</li>
+        <li>كل command يتحقق من صحة input قبل التنفيذ.</li>
+        <li>الأخطاء تتحول إلى <code>CommandError</code> بشكل مناسب للمستخدم.</li>
+        <li>الطبقة قابلة للربط بسهولة مع automation خارجية.</li>
+        <li>الأوامر تغطي lifecycle جيدًا: إدخال معرفة، إخراج بيانات، تدريب، inference، وتحليل batch.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>ما الذي يمكن تطويره لاحقًا؟</h2>
+      <ul>
+        <li>إضافة أوامر scheduling أو health checks.</li>
+        <li>إضافة تنسيق إخراج JSON رسمي لبعض الأوامر بدل الطباعة النصية فقط.</li>
+        <li>إضافة progress reporting للعمليات الكبيرة.</li>
+        <li>إضافة flags للتحكم في verbosity بشكل أدق.</li>
+        <li>إضافة أوامر لإعادة بناء reports أو clusters من بيانات تاريخية كاملة.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>الخاتمة</h2>
+      <p>
+        إذا كانت طبقة <code>services</code> هي العقل التحليلي للمشروع، فإن طبقة
+        <code>management commands</code> هي لوحة التشغيل النصية لهذا العقل. هي تسمح للمطور أو المشغل
+        أن يفعّل الاستيراد، التصدير، التدريب، التنبؤ، وكشف الأنماط من خارج الـ API بسهولة وبشكل موحد.
+      </p>
+      <p>
+        ومن الناحية المعمارية، هذه الطبقة ناجحة لأنها تحافظ على مبدأ مهم جدًا:
+        <strong>الـ command يجب أن يبقى رفيعًا، والخدمة يجب أن تبقى ذكية.</strong>
+      </p>
+      <p class="small">
+        تم إعداد هذه الوثيقة بناءً على الملفات الحالية الموجودة في
+        <code>src/core/management</code> و<code>src/core/management/commands</code>.
+      </p>
+    </section>
+  </div>
+</body>
+</html>

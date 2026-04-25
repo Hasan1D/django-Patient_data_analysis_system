@@ -2,6 +2,7 @@ from datetime import date
 
 from core.models import Visit
 
+from .active_cases import active_visits_queryset
 from .contracts import TrendSnapshot
 
 
@@ -26,6 +27,8 @@ def count_cases_for_window(
         diagnosis_date__gte=start_date,
         diagnosis_date__lte=end_date,
     )
+
+    visits = active_visits_queryset(visits)
 
     if region_type:
         visits = visits.filter(geodata__region_type=region_type).distinct()
