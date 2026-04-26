@@ -38,7 +38,22 @@ from .serializers import (
     UserSerializer,
     VisitSerializer,
 )
-from .models import Disease, Doctor, GeoCluster, GeoData, Hospital, LabTest, MedicalHistory, Patient, Report, Visit
+from .models import (
+    Allergy,
+    Disease,
+    Doctor,
+    GeoCluster,
+    GeoData,
+    Hospital,
+    LabTest,
+    MedicalHistory,
+    Patient,
+    Report,
+    SurgicalHistory,
+    Vaccine,
+    Visit,
+    chronicDisease,
+)
 
 
 User = get_user_model()
@@ -698,6 +713,157 @@ class PermissionTests(CoreAPITestCase):
         self.assertIn("policy", response.json())
 
 
+class PatientWorkflowTests(CoreAPITestCase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_authenticate(user=self.doctor_user)
+
+    def _visit_payload(self, **overrides):
+        payload = {
+            "doctor": self.doctor.id,
+            "disease": self.disease_a.id,
+            "diagnosis_date": "2026-04-22",
+            "status": "infected",
+            "weight": 72,
+            "height": 176,
+            "marital_status": "single",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_patient_creation_automatically_creates_one_medical_history(self):
+        response = self.client.post(
+            reverse("patient-list"),
+            {
+                "national_number": "WF-1001",
+                "name": "Workflow Patient",
+                "birth_date": "1991-05-10",
+                "gender": "female",
+                "residence_lat": 33.6100,
+                "residence_long": 36.4100,
+                "work_lat": 33.6200,
+                "work_long": 36.4200,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        patient = Patient.objects.get(id=response.json()["id"])
+        MedicalHistory.objects.get_or_create(patient=patient)
+
+        self.assertEqual(MedicalHistory.objects.filter(patient=patient).count(), 1)
+
+    def test_create_visit_from_patient_endpoint_links_patient_and_creates_geodata(self):
+        response = self.client.post(
+            reverse("patient-visits", args=[self.patient_one.id]),
+            self._visit_payload(),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        visit = Visit.objects.get(id=response.json()["id"])
+        self.assertEqual(visit.patient_id, self.patient_one.id)
+
+        home_geodata = GeoData.objects.get(visit=visit, region_type="home")
+        work_geodata = GeoData.objects.get(visit=visit, region_type="work")
+        self.assertEqual(home_geodata.patient_id, self.patient_one.id)
+        self.assertEqual(home_geodata.latitude, self.patient_one.residence_lat)
+        self.assertEqual(home_geodata.longitude, self.patient_one.residence_long)
+        self.assertEqual(work_geodata.latitude, self.patient_one.work_lat)
+        self.assertEqual(work_geodata.longitude, self.patient_one.work_long)
+
+    def test_create_visit_from_patient_endpoint_ignores_missing_work_coordinates(self):
+        patient = Patient.objects.create(
+            national_number="WF-1002",
+            name="Home Only Patient",
+            birth_date=date(1985, 3, 8),
+            gender="male",
+            residence_lat=33.7000,
+            residence_long=36.5000,
+            work_lat=None,
+            work_long=None,
+        )
+
+        response = self.client.post(
+            reverse("patient-visits", args=[patient.id]),
+            self._visit_payload(),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        visit = Visit.objects.get(id=response.json()["id"])
+        geodata = GeoData.objects.filter(visit=visit).order_by("region_type")
+        self.assertEqual(list(geodata.values_list("region_type", flat=True)), ["home"])
+
+    def test_create_visit_from_patient_endpoint_rejects_patient_in_body(self):
+        response = self.client.post(
+            reverse("patient-visits", args=[self.patient_one.id]),
+            self._visit_payload(patient=self.patient_two.id),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("patient", response.json())
+
+    def test_add_lab_test_through_visit_workflow(self):
+        response = self.client.post(
+            reverse("visit-lab-tests", args=[self.visit_a1.id]),
+            {
+                "test_code": "CBC",
+                "test_name": "Complete Blood Count",
+                "result": "Normal",
+                "test_date": "2026-04-22T10:30:00Z",
+                "notes": "Workflow lab test",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        lab_test = LabTest.objects.get(id=response.json()["id"])
+        self.assertEqual(lab_test.visit_id, self.visit_a1.id)
+        self.assertEqual(response.json()["visit"], self.visit_a1.id)
+
+    def test_add_medical_history_details_through_patient_workflow(self):
+        history = MedicalHistory.objects.get(patient=self.patient_one)
+
+        allergy_response = self.client.post(
+            reverse("patient-allergies", args=[self.patient_one.id]),
+            {"allergy_name": "Penicillin", "severity_level": "high"},
+        )
+        chronic_response = self.client.post(
+            reverse("patient-chronic-diseases", args=[self.patient_one.id]),
+            {"disease_name": "Asthma", "diagnosis_date": "2020-01-15"},
+        )
+        vaccine_response = self.client.post(
+            reverse("patient-vaccines", args=[self.patient_one.id]),
+            {"vaccine_name": "Influenza", "date_administered": "2025-10-01"},
+        )
+        surgery_response = self.client.post(
+            reverse("patient-surgeries", args=[self.patient_one.id]),
+            {
+                "surgery_description": "Appendectomy",
+                "surgery_date": "2019-06-20",
+                "has_metal_plates": False,
+            },
+        )
+
+        self.assertEqual(allergy_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(chronic_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(vaccine_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(surgery_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            Allergy.objects.get(id=allergy_response.json()["id"]).history_id,
+            history.id,
+        )
+        self.assertEqual(
+            chronicDisease.objects.get(id=chronic_response.json()["id"]).history_id,
+            history.id,
+        )
+        self.assertEqual(
+            Vaccine.objects.get(id=vaccine_response.json()["id"]).history_id,
+            history.id,
+        )
+        self.assertEqual(
+            SurgicalHistory.objects.get(id=surgery_response.json()["id"]).history_id,
+            history.id,
+        )
+
+
 class SerializerTests(CoreAPITestCase):
     def test_user_serializer_excludes_password_field(self):
         serializer = UserSerializer(self.doctor_user)
@@ -875,10 +1041,6 @@ class SerializerTests(CoreAPITestCase):
         self.assertIn("region_type", serializer.errors)
 
     def test_medical_history_serializer_allows_only_one_history_per_patient(self):
-        MedicalHistory.objects.create(
-            patient=self.patient_one,
-            has_surgical_metal_plates=False,
-        )
         serializer = MedicalHistorySerializer(
             data={
                 "patient": self.patient_one.id,

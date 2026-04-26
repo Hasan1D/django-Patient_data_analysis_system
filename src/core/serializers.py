@@ -18,6 +18,21 @@ from .models import (
 )
 
 
+class URLLinkedModelSerializer(serializers.ModelSerializer):
+    url_linked_fields: tuple[str, ...] = ()
+
+    def validate(self, attrs):
+        errors = {}
+        initial_data = getattr(self, "initial_data", {})
+        for field_name in self.url_linked_fields:
+            if field_name in initial_data:
+                errors[field_name] = "This field is taken from the URL."
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return super().validate(attrs)
+
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -84,6 +99,23 @@ class VisitSerializer(serializers.ModelSerializer):
     class Meta:
         model = Visit
         fields = "__all__"
+
+
+class PatientVisitCreateSerializer(URLLinkedModelSerializer):
+    url_linked_fields = ("patient",)
+
+    class Meta:
+        model = Visit
+        fields = (
+            "doctor",
+            "disease",
+            "diagnose",
+            "diagnosis_date",
+            "status",
+            "weight",
+            "height",
+            "marital_status",
+        )
 
 
 class GeoDataSerializer(serializers.ModelSerializer):
@@ -166,6 +198,20 @@ class LabTestSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class VisitLabTestCreateSerializer(URLLinkedModelSerializer):
+    url_linked_fields = ("visit",)
+
+    class Meta:
+        model = LabTest
+        fields = (
+            "test_code",
+            "test_name",
+            "result",
+            "test_date",
+            "notes",
+        )
+
+
 class MedicalHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = MedicalHistory
@@ -178,10 +224,32 @@ class VaccineSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class PatientVaccineCreateSerializer(URLLinkedModelSerializer):
+    url_linked_fields = ("history",)
+
+    class Meta:
+        model = Vaccine
+        fields = (
+            "vaccine_name",
+            "date_administered",
+        )
+
+
 class AllergySerializer(serializers.ModelSerializer):
     class Meta:
         model = Allergy
         fields = "__all__"
+
+
+class PatientAllergyCreateSerializer(URLLinkedModelSerializer):
+    url_linked_fields = ("history",)
+
+    class Meta:
+        model = Allergy
+        fields = (
+            "allergy_name",
+            "severity_level",
+        )
 
 
 class ChronicDiseaseSerializer(serializers.ModelSerializer):
@@ -190,7 +258,30 @@ class ChronicDiseaseSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class PatientChronicDiseaseCreateSerializer(URLLinkedModelSerializer):
+    url_linked_fields = ("history",)
+
+    class Meta:
+        model = chronicDisease
+        fields = (
+            "disease_name",
+            "diagnosis_date",
+        )
+
+
 class SurgicalHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = SurgicalHistory
         fields = "__all__"
+
+
+class PatientSurgicalHistoryCreateSerializer(URLLinkedModelSerializer):
+    url_linked_fields = ("history",)
+
+    class Meta:
+        model = SurgicalHistory
+        fields = (
+            "surgery_description",
+            "surgery_date",
+            "has_metal_plates",
+        )

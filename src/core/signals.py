@@ -4,7 +4,7 @@ from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from .models import GeoData
+from .models import GeoData, MedicalHistory, Patient
 from .services.monitoring_service import run_monitoring_for_geodata
 
 
@@ -20,3 +20,9 @@ def trigger_monitoring_after_geodata_save(sender, instance: GeoData, **kwargs):
             logger.exception("Automatic outbreak monitoring failed for GeoData %s", instance.id)
 
     transaction.on_commit(_run_monitoring)
+
+
+@receiver(post_save, sender=Patient)
+def create_medical_history_after_patient_create(sender, instance: Patient, created: bool, **kwargs):
+    if created:
+        MedicalHistory.objects.get_or_create(patient=instance)
