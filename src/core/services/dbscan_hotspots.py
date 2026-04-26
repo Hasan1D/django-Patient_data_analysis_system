@@ -81,6 +81,7 @@ def _collect_points(
     queryset = active_geodata_queryset(
         GeoData.objects.select_related("visit__disease", "patient").all(),
         visit_queryset=visits,
+        constrain_latest_to_queryset=False,
     )
     if region_type:
         queryset = queryset.filter(region_type=region_type)

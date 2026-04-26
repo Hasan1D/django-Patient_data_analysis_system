@@ -52,6 +52,11 @@ from .services.dbscan_hotspots import (
     persist_dbscan_clusters,
     serialize_dbscan_clusters,
 )
+from .services.hdbscan_hotspots import (
+    detect_hdbscan_clusters,
+    persist_hdbscan_clusters,
+    serialize_hdbscan_clusters,
+)
 from .services.outbreak_engine import evaluate_visit_outbreak
 from .services.report_service import create_report_from_analysis
 from .services.risk_prediction import predict_visit_risk, serialize_risk_prediction
@@ -477,7 +482,11 @@ class GeoDataViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def active(self, request):
         visits = VisitFilter(request.GET, queryset=Visit.objects.all()).qs
-        geodata = active_geodata_queryset(GeoData.objects.all(), visit_queryset=visits)
+        geodata = active_geodata_queryset(
+            GeoData.objects.all(),
+            visit_queryset=visits,
+            constrain_latest_to_queryset=False,
+        )
         geodata = GeoDataFilter(request.GET, queryset=geodata).qs
         geodata = one_geodata_per_visit_queryset(geodata).order_by("visit__diagnosis_date", "id")
         serializer = self.get_serializer(geodata, many=True)
@@ -554,6 +563,82 @@ class GeoClusterViewSet(viewsets.ModelViewSet):
                 "cluster_count": len(clusters),
                 "persisted_cluster_ids": persisted_ids,
                 "clusters": serialize_dbscan_clusters(clusters),
+            }
+        )
+
+    @action(detail=False, methods=["get", "post"])
+    def detect_hdbscan(self, request):
+        payload = request.data if request.method == "POST" else request.query_params
+        disease_id = _to_int(payload.get("disease"))
+        lookback_days = _to_int(payload.get("lookback_days"), 14)
+        date_from = parse_date(payload.get("date_from")) if payload.get("date_from") else None
+        date_to = parse_date(payload.get("date_to")) if payload.get("date_to") else None
+        region_type = payload.get("region_type") or None
+        min_cluster_size = _to_int(payload.get("min_cluster_size"), 3)
+        min_samples = _to_int(payload.get("min_samples"))
+        cluster_selection_method = payload.get("cluster_selection_method") or "eom"
+        allow_single_cluster = _to_bool(payload.get("allow_single_cluster"))
+        persist = _to_bool(payload.get("persist"))
+
+        if payload.get("date_from") and date_from is None:
+            return Response(
+                {"error": "date_from must be in YYYY-MM-DD format."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if payload.get("date_to") and date_to is None:
+            return Response(
+                {"error": "date_to must be in YYYY-MM-DD format."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if disease_id is not None and not Disease.objects.filter(id=disease_id).exists():
+            return Response(
+                {"error": "Disease not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = detect_hdbscan_clusters(
+                disease_id=disease_id,
+                lookback_days=lookback_days,
+                date_from=date_from,
+                date_to=date_to,
+                region_type=region_type,
+                min_cluster_size=min_cluster_size if min_cluster_size is not None else 3,
+                min_samples=min_samples,
+                cluster_selection_method=cluster_selection_method,
+                allow_single_cluster=allow_single_cluster,
+            )
+        except (ImportError, ModuleNotFoundError) as exc:
+            return Response(
+                {"error": f"HDBSCAN dependencies are not installed: {exc}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        persisted_ids: list[int] = []
+        if persist:
+            persisted_ids = persist_hdbscan_clusters(clusters=result.clusters)
+
+        return Response(
+            {
+                "parameters": {
+                    "disease_id": disease_id,
+                    "lookback_days": lookback_days,
+                    "date_from": date_from.isoformat() if date_from else None,
+                    "date_to": date_to.isoformat() if date_to else None,
+                    "region_type": region_type,
+                    "min_cluster_size": min_cluster_size,
+                    "min_samples": min_samples,
+                    "cluster_selection_method": cluster_selection_method,
+                    "allow_single_cluster": allow_single_cluster,
+                    "persist": persist,
+                },
+                "cluster_count": len(result.clusters),
+                "noise_count": result.noise_count,
+                "persisted_ids": persisted_ids,
+                "persisted_cluster_ids": persisted_ids,
+                "clusters": serialize_hdbscan_clusters(result.clusters),
             }
         )
 
