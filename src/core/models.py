@@ -59,14 +59,29 @@ class Doctor(models.Model):
 
 
 class Patient(models.Model):
+    GENDER_MALE = "male"
+    GENDER_FEMALE = "female"
+    GENDER_CHOICES = [
+        (GENDER_MALE, "Male"),
+        (GENDER_FEMALE, "Female"),
+    ]
+
     national_number =models.CharField(max_length=20 , unique=True)
     name = models.CharField(max_length=255)
     birth_date = models.DateField()
-    gender = models.CharField(max_length=10)
-    residence_lat = models.FloatField()    
-    residence_long = models.FloatField()    
-    work_lat = models.FloatField()    
-    work_long = models.FloatField()
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
+    residence_lat = models.FloatField(null=True, blank=True)    
+    residence_long = models.FloatField(null=True, blank=True)    
+    work_lat = models.FloatField(null=True, blank=True)    
+    work_long = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(gender__in=["male", "female"]),
+                name="core_patient_gender_male_or_female",
+            ),
+        ]
     
     
     def __str__(self):
@@ -112,15 +127,44 @@ class Disease(models.Model):
 
 
 class Visit(models.Model):
+    STATUS_INFECTED = "infected"
+    STATUS_CURED = "cured"
+    STATUS_CHOICES = [
+        (STATUS_INFECTED, "Infected"),
+        (STATUS_CURED, "Cured"),
+    ]
+    MARITAL_STATUS_DIVORCED = "divorced"
+    MARITAL_STATUS_SINGLE = "single"
+    MARITAL_STATUS_MARRIED = "married"
+    MARITAL_STATUS_WIDOW_ER = "widow(er)"
+    MARITAL_STATUS_CHOICES = [
+        (MARITAL_STATUS_DIVORCED, "Divorced"),
+        (MARITAL_STATUS_SINGLE, "Single"),
+        (MARITAL_STATUS_MARRIED, "Married"),
+        (MARITAL_STATUS_WIDOW_ER, "Widow(er)"),
+    ]
+
     patient = models.ForeignKey(Patient , on_delete=models.CASCADE)   
     doctor = models.ForeignKey(Doctor , on_delete=models.CASCADE)   
     disease = models.ForeignKey(Disease , on_delete=models.CASCADE)
     diagnose = models.TextField(blank=True, default="")
     diagnosis_date = models.DateField()
-    status = models.CharField(max_length=100)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
     weight = models.FloatField()   
     height = models.FloatField()  
-    marital_status = models.CharField(max_length=50)
+    marital_status = models.CharField(max_length=20, choices=MARITAL_STATUS_CHOICES)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(status__in=["infected", "cured"]),
+                name="core_visit_status_infected_or_cured",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(marital_status__in=["divorced", "single", "married", "widow(er)"]),
+                name="core_visit_marital_status_valid",
+            ),
+        ]
      
     
     def __str__ (self):
@@ -129,11 +173,26 @@ class Visit(models.Model):
     
     
 class GeoData(models.Model):
+    REGION_HOME = "home"
+    REGION_WORK = "work"
+    REGION_TYPE_CHOICES = [
+        (REGION_HOME, "Home"),
+        (REGION_WORK, "Work"),
+    ]
+
     patient = models.ForeignKey(Patient , on_delete=models.CASCADE)
     visit = models.ForeignKey(Visit , on_delete=models.CASCADE)
     latitude = models.FloatField()
     longitude = models.FloatField()
-    region_type = models.CharField(max_length=50)
+    region_type = models.CharField(max_length=20, choices=REGION_TYPE_CHOICES)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(region_type__in=["home", "work"]),
+                name="core_geodata_region_type_home_or_work",
+            ),
+        ]
     
     
     def __str__(self):
@@ -223,7 +282,7 @@ class LabTest(models.Model):
 
 
 class MedicalHistory(models.Model):
-    patient = models.ForeignKey(Patient , on_delete=models.CASCADE)
+    patient = models.OneToOneField(Patient , on_delete=models.CASCADE)
     has_surgical_metal_plates = models.BooleanField(default=False)
     
     

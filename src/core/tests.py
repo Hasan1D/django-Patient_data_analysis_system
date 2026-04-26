@@ -29,8 +29,16 @@ from .services.risk_prediction import (
 )
 from .services.spatial import distance_km, find_nearby_cases
 from .services.trend import build_trend_snapshot, count_cases_for_window
-from .serializers import DiseaseSerializer, GeoDataSerializer, ReportSerializer, UserSerializer
-from .models import Disease, Doctor, GeoCluster, GeoData, Hospital, LabTest, Patient, Report, Visit
+from .serializers import (
+    DiseaseSerializer,
+    GeoDataSerializer,
+    MedicalHistorySerializer,
+    PatientSerializer,
+    ReportSerializer,
+    UserSerializer,
+    VisitSerializer,
+)
+from .models import Disease, Doctor, GeoCluster, GeoData, Hospital, LabTest, MedicalHistory, Patient, Report, Visit
 
 
 User = get_user_model()
@@ -710,6 +718,57 @@ class SerializerTests(CoreAPITestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn("role", serializer.errors)
 
+    def test_patient_serializer_rejects_gender_outside_male_or_female(self):
+        serializer = PatientSerializer(
+            data={
+                "national_number": "9000",
+                "name": "Invalid Gender Patient",
+                "birth_date": "1990-01-01",
+                "gender": "other",
+                "residence_lat": 33.50,
+                "residence_long": 36.25,
+                "work_lat": 33.52,
+                "work_long": 36.26,
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("gender", serializer.errors)
+
+    def test_visit_serializer_rejects_status_outside_infected_or_cured(self):
+        serializer = VisitSerializer(
+            data={
+                "patient": self.patient_one.id,
+                "doctor": self.doctor.id,
+                "disease": self.disease_a.id,
+                "diagnosis_date": "2026-04-12",
+                "status": "confirmed",
+                "weight": 70,
+                "height": 175,
+                "marital_status": "single",
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("status", serializer.errors)
+
+    def test_visit_serializer_rejects_marital_status_outside_allowed_choices(self):
+        serializer = VisitSerializer(
+            data={
+                "patient": self.patient_one.id,
+                "doctor": self.doctor.id,
+                "disease": self.disease_a.id,
+                "diagnosis_date": "2026-04-12",
+                "status": "infected",
+                "weight": 70,
+                "height": 175,
+                "marital_status": "engaged",
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("marital_status", serializer.errors)
+
     def test_disease_serializer_normalizes_code_and_rejects_negative_scores(self):
         serializer = DiseaseSerializer(
             data={
@@ -795,6 +854,35 @@ class SerializerTests(CoreAPITestCase):
                 "latitude": 33.5000,
                 "longitude": 36.2500,
                 "region_type": "home",
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("patient", serializer.errors)
+
+    def test_geodata_serializer_rejects_region_type_outside_home_or_work(self):
+        serializer = GeoDataSerializer(
+            data={
+                "patient": self.patient_one.id,
+                "visit": self.visit_a1.id,
+                "latitude": 33.5000,
+                "longitude": 36.2500,
+                "region_type": "school",
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("region_type", serializer.errors)
+
+    def test_medical_history_serializer_allows_only_one_history_per_patient(self):
+        MedicalHistory.objects.create(
+            patient=self.patient_one,
+            has_surgical_metal_plates=False,
+        )
+        serializer = MedicalHistorySerializer(
+            data={
+                "patient": self.patient_one.id,
+                "has_surgical_metal_plates": True,
             }
         )
 

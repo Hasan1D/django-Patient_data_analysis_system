@@ -3,8 +3,8 @@ from django.db.models import OuterRef, QuerySet, Subquery
 from core.models import GeoData, Visit
 
 
-ACTIVE_VISIT_STATUS = "infected"
-INACTIVE_VISIT_STATUS = "cured"
+ACTIVE_VISIT_STATUS = Visit.STATUS_INFECTED
+INACTIVE_VISIT_STATUS = Visit.STATUS_CURED
 
 
 def latest_visits_per_patient_disease(queryset: QuerySet | None = None) -> QuerySet:
