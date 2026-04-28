@@ -18,9 +18,13 @@ from django.contrib import admin
 from django.urls import path , include
 from rest_framework.routers import DefaultRouter
 from core.views import (
+    RegisterView,
     PatientViewSet , UserViewSet , DoctorViewSet , HospitalViewSet ,
     DiseaseViewSet ,VisitViewSet , GeoDataViewSet , 
-    GeoClusterViewSet , ReportViewSet , LabTestViewSet )
+    GeoClusterViewSet , ReportViewSet , LabTestViewSet,
+    ResendEmailVerificationView,
+    VerifyEmailView,
+)
 
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -46,6 +50,9 @@ urlpatterns = [
 ]
 
 urlpatterns += [
+    path('api/auth/register/' , RegisterView.as_view() , name='auth-register'),
+    path('api/auth/verify-email/' , VerifyEmailView.as_view() , name='auth-verify-email'),
+    path('api/auth/resend-verification/' , ResendEmailVerificationView.as_view() , name='auth-resend-verification'),
     path('api/token/' , TokenObtainPairView.as_view() , name='token_obtion_pair'),
     path('api/token/refresh/' , TokenRefreshView.as_view() , name='token_refresh'),
 ]

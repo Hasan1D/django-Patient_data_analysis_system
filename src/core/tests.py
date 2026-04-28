@@ -2,6 +2,7 @@ from datetime import date
 from pathlib import Path
 import csv
 import pickle
+import re
 import shutil
 import time
 from tempfile import NamedTemporaryFile
@@ -10,7 +11,9 @@ from unittest.mock import patch
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.core.management import call_command
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -48,6 +51,7 @@ from .models import (
     Allergy,
     Disease,
     Doctor,
+    EmailVerificationCode,
     GeoCluster,
     GeoData,
     Hospital,
@@ -789,6 +793,109 @@ class PermissionTests(CoreAPITestCase):
         self.assertEqual(response.json()["disease"]["id"], self.disease_a.id)
         self.assertIn("analysis", response.json())
         self.assertIn("policy", response.json())
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    EMAIL_VERIFICATION_CODE_EXPIRY_MINUTES=10,
+    EMAIL_VERIFICATION_CODE_LENGTH=6,
+)
+class EmailVerificationTests(APITestCase):
+    def _registration_payload(self, **overrides):
+        payload = {
+            "username": "newdoctor",
+            "real_name": "New Doctor",
+            "phon_number": "0099",
+            "email": "newdoctor@example.com",
+            "password": "ComplexPass123!",
+            "password_confirm": "ComplexPass123!",
+        }
+        payload.update(overrides)
+        return payload
+
+    def _register_user(self):
+        response = self.client.post(
+            reverse("auth-register"),
+            self._registration_payload(),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return User.objects.get(username="newdoctor")
+
+    def _email_code(self):
+        match = re.search(r"\b\d{6}\b", mail.outbox[-1].body)
+        self.assertIsNotNone(match)
+        return match.group(0)
+
+    def test_registration_creates_inactive_user_and_sends_verification_code(self):
+        response = self.client.post(
+            reverse("auth-register"),
+            self._registration_payload(),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user = User.objects.get(username="newdoctor")
+        self.assertFalse(user.is_active)
+        self.assertEqual(user.role, User.ROLE_DOCTOR)
+        self.assertTrue(user.check_password("ComplexPass123!"))
+        self.assertTrue(EmailVerificationCode.objects.filter(user=user).exists())
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("newdoctor@example.com", mail.outbox[0].to)
+        self.assertRegex(mail.outbox[0].body, r"\b\d{6}\b")
+
+    def test_correct_verification_code_activates_user(self):
+        user = self._register_user()
+        code = self._email_code()
+
+        response = self.client.post(
+            reverse("auth-verify-email"),
+            {"email": "newdoctor@example.com", "code": code},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertFalse(EmailVerificationCode.objects.filter(user=user).exists())
+
+    def test_wrong_verification_code_keeps_user_inactive(self):
+        user = self._register_user()
+        code = self._email_code()
+        wrong_code = "000000" if code != "000000" else "111111"
+
+        response = self.client.post(
+            reverse("auth-verify-email"),
+            {"email": "newdoctor@example.com", "code": wrong_code},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        user.refresh_from_db()
+        verification = EmailVerificationCode.objects.get(user=user)
+        self.assertFalse(user.is_active)
+        self.assertEqual(verification.attempts, 1)
+
+    def test_resend_verification_replaces_code_and_sends_email(self):
+        user = self._register_user()
+        original_code = self._email_code()
+
+        response = self.client.post(
+            reverse("auth-resend-verification"),
+            {"email": "newdoctor@example.com"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 2)
+        response = self.client.post(
+            reverse("auth-verify-email"),
+            {"email": "newdoctor@example.com", "code": original_code},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        user.refresh_from_db()
+        self.assertFalse(user.is_active)
 
 
 class PatientWorkflowTests(CoreAPITestCase):

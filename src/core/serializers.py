@@ -1,3 +1,4 @@
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from .models import (
     Allergy,
@@ -47,6 +48,82 @@ class UserSerializer(serializers.ModelSerializer):
             "is_staff",
         )
         read_only_fields = ("id", "is_staff")
+
+
+class UserRegistrationSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+    password_confirm = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "username",
+            "real_name",
+            "phon_number",
+            "email",
+            "password",
+            "password_confirm",
+        )
+        read_only_fields = ("id",)
+
+    def validate_email(self, value):
+        normalized_value = value.strip().lower()
+        if not normalized_value:
+            raise serializers.ValidationError("Email is required.")
+        if User.objects.filter(email__iexact=normalized_value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return normalized_value
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs["password_confirm"]:
+            raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
+        validate_password(attrs["password"])
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop("password_confirm")
+        password = validated_data.pop("password")
+        return User.objects.create_user(
+            password=password,
+            role=User.ROLE_DOCTOR,
+            is_active=False,
+            **validated_data,
+        )
+
+
+class EmailVerificationSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.RegexField(regex=r"^\d+$", max_length=12)
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+    def validate(self, attrs):
+        users = list(User.objects.filter(email__iexact=attrs["email"])[:2])
+        if not users:
+            raise serializers.ValidationError({"email": "No account was found for this email."})
+        if len(users) > 1:
+            raise serializers.ValidationError({"email": "More than one account uses this email."})
+        self.user = users[0]
+        return attrs
+
+
+class ResendEmailVerificationSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        normalized_value = value.strip().lower()
+        users = list(User.objects.filter(email__iexact=normalized_value)[:2])
+        if not users:
+            raise serializers.ValidationError("No account was found for this email.")
+        if len(users) > 1:
+            raise serializers.ValidationError("More than one account uses this email.")
+        user = users[0]
+        if user.is_active and not hasattr(user, "email_verification_code"):
+            raise serializers.ValidationError("This account is already active.")
+        self.user = user
+        return normalized_value
 
 
 class PatientSerializer(serializers.ModelSerializer):

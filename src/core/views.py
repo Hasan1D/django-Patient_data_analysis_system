@@ -1,14 +1,16 @@
 from dataclasses import asdict, replace
 from datetime import timedelta
 
+from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404
 from django.utils.dateparse import parse_date
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .filters import GeoDataFilter, VisitFilter
 from .models import Disease, Doctor, GeoCluster, GeoData, Hospital, LabTest, Patient, Report, User, Visit
@@ -29,11 +31,14 @@ from .serializers import (
     PatientVaccineCreateSerializer,
     PatientVisitCreateSerializer,
     ReportSerializer,
+    ResendEmailVerificationSerializer,
     SurgicalHistorySerializer,
+    UserRegistrationSerializer,
     UserSerializer,
     VaccineSerializer,
     VisitSerializer,
     VisitLabTestCreateSerializer,
+    EmailVerificationSerializer,
 )
 from .services import VisitOutbreakContext
 from .services.active_cases import (
@@ -69,6 +74,7 @@ from .services.workflow_service import (
     create_vaccine_for_patient,
     create_visit_for_patient,
 )
+from .services.email_verification import send_email_verification_code, verify_email_code
 
 
 def _report_alert_level(*, risk_score: float, current_case_count: int, surge_ratio: float) -> str:
@@ -187,6 +193,52 @@ def _active_alerts_queryset(queryset):
 
 def _active_hotspots_queryset(queryset):
     return queryset.filter(risk_level__gte=2)
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = UserRegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            user = serializer.save()
+            send_email_verification_code(user)
+
+        return Response(
+            {
+                "message": "Registration successful. Please check your email for the verification code.",
+                "user": UserSerializer(user).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class VerifyEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = EmailVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            verify_email_code(serializer.user, serializer.validated_data["code"])
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"message": "Account verified successfully."})
+
+
+class ResendEmailVerificationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ResendEmailVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        send_email_verification_code(serializer.user)
+
+        return Response({"message": "Verification code sent."})
 
 
 class PatientViewSet(viewsets.ModelViewSet):

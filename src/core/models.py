@@ -3,6 +3,7 @@ from datetime import date
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
 
 # Create your models here.
 
@@ -31,6 +32,24 @@ class User(AbstractUser) :
     
     def __str__(self):
         return self.username
+
+
+class EmailVerificationCode(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="email_verification_code",
+    )
+    code_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    attempts = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return f"Email verification for {self.user.username}"
     
 
 

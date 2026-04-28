@@ -66,6 +66,13 @@ class UserAdmin(UserAdmin):
     ordering = ('username',)
 
 
+@admin.register(EmailVerificationCode)
+class EmailVerificationCodeAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'created_at', 'expires_at', 'attempts')
+    search_fields = ('user__username', 'user__email')
+    readonly_fields = ('code_hash', 'created_at')
+
+
 @admin.register(Hospital)
 class HospitalAdmin (admin.ModelAdmin):
     list_display = ('id' , 'name' , 'city' , 'location')
