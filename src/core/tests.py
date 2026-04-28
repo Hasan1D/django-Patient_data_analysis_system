@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.management import call_command
@@ -18,6 +19,8 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from .admin import UserAccountAdminCreationForm, UserAdmin as CoreUserAdmin
+from .services.account_service import create_linked_doctor_for_user
 from .services import DiseaseAlertPolicy, OutbreakAnalysis, TrendSnapshot, VisitOutbreakContext
 from .services.active_cases import active_visits_queryset
 from .services.alert_policies import get_policy_for_disease
@@ -38,6 +41,7 @@ from .services.risk_prediction import (
 )
 from .services.spatial import distance_km, find_nearby_cases
 from .services.trend import build_trend_snapshot, count_cases_for_window
+from .services.workflow_service import create_geodata_from_patient_coordinates
 from .serializers import (
     DiseaseSerializer,
     GeoDataSerializer,
@@ -795,6 +799,123 @@ class PermissionTests(CoreAPITestCase):
         self.assertIn("policy", response.json())
 
 
+class AccountCreationTests(CoreAPITestCase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_authenticate(user=self.admin_user)
+
+    def _account_payload(self, **overrides):
+        payload = {
+            "username": "api-doctor",
+            "real_name": "API Doctor",
+            "phon_number": "0900",
+            "email": "api-doctor@example.com",
+            "role": "doctor",
+            "password": "ComplexPass123!",
+            "password_confirm": "ComplexPass123!",
+            "specialization": "Internal Medicine",
+            "hospital_id": self.hospital.id,
+            "is_active": True,
+            "is_staff": False,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_doctor_user_created_through_api_creates_linked_doctor(self):
+        response = self.client.post(reverse("user-create-account"), self._account_payload())
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user = User.objects.get(username="api-doctor")
+        doctor = Doctor.objects.get(user=user)
+        self.assertEqual(user.role, User.ROLE_DOCTOR)
+        self.assertEqual(doctor.specialization, "Internal Medicine")
+        self.assertEqual(doctor.hospital_id, self.hospital.id)
+
+    def test_admin_user_created_through_api_does_not_create_doctor(self):
+        response = self.client.post(
+            reverse("user-create-account"),
+            self._account_payload(
+                username="api-admin",
+                email="api-admin@example.com",
+                role="admin",
+                specialization="Ignored",
+                hospital_id=self.hospital.id,
+                is_staff=True,
+            ),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user = User.objects.get(username="api-admin")
+        self.assertEqual(user.role, User.ROLE_ADMIN)
+        self.assertFalse(Doctor.objects.filter(user=user).exists())
+
+    def test_doctor_account_creation_requires_specialization(self):
+        response = self.client.post(
+            reverse("user-create-account"),
+            self._account_payload(specialization=""),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("specialization", response.json())
+
+    def test_doctor_account_creation_requires_hospital_id(self):
+        payload = self._account_payload()
+        payload.pop("hospital_id")
+
+        response = self.client.post(reverse("user-create-account"), payload)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("hospital_id", response.json())
+
+    def test_doctor_account_creation_rejects_invalid_hospital_id(self):
+        response = self.client.post(
+            reverse("user-create-account"),
+            self._account_payload(hospital_id=999999),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("hospital_id", response.json())
+
+    def test_admin_side_doctor_creation_creates_linked_doctor(self):
+        form = UserAccountAdminCreationForm(
+            data={
+                "username": "admin-side-doctor",
+                "real_name": "Admin Side Doctor",
+                "phon_number": "0901",
+                "email": "admin-side-doctor@example.com",
+                "role": "doctor",
+                "password1": "ComplexPass123!",
+                "password2": "ComplexPass123!",
+                "specialization": "Cardiology",
+                "hospital": self.hospital.id,
+                "is_staff": False,
+                "is_active": True,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+        admin_view = CoreUserAdmin(User, AdminSite())
+        user = form.save(commit=False)
+        admin_view.save_model(
+            SimpleNamespace(user=self.admin_user),
+            user,
+            form,
+            change=False,
+        )
+
+        doctor = Doctor.objects.get(user=user)
+        self.assertEqual(doctor.specialization, "Cardiology")
+        self.assertEqual(doctor.hospital_id, self.hospital.id)
+
+    def test_duplicate_doctor_profile_creation_is_prevented(self):
+        with self.assertRaisesMessage(ValueError, "Doctor record already exists for this user."):
+            create_linked_doctor_for_user(
+                user=self.doctor_user,
+                specialization="Duplicate",
+                hospital=self.hospital,
+            )
+
+
 @override_settings(
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     EMAIL_VERIFICATION_CODE_EXPIRY_MINUTES=10,
@@ -905,8 +1026,7 @@ class PatientWorkflowTests(CoreAPITestCase):
 
     def _visit_payload(self, **overrides):
         payload = {
-            "doctor": self.doctor.id,
-            "disease": self.disease_a.id,
+            "disease_code": self.disease_a.disease_code,
             "diagnosis_date": "2026-04-22",
             "status": "infected",
             "weight": 72,
@@ -937,6 +1057,26 @@ class PatientWorkflowTests(CoreAPITestCase):
 
         self.assertEqual(MedicalHistory.objects.filter(patient=patient).count(), 1)
 
+    def test_patient_creation_allows_missing_work_coordinates(self):
+        response = self.client.post(
+            reverse("patient-list"),
+            {
+                "national_number": "WF-1003",
+                "name": "No Work Coordinates Patient",
+                "birth_date": "1988-07-12",
+                "gender": "male",
+                "residence_lat": 33.7100,
+                "residence_long": 36.5100,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        patient = Patient.objects.get(id=response.json()["id"])
+        self.assertEqual(patient.residence_lat, 33.7100)
+        self.assertEqual(patient.residence_long, 36.5100)
+        self.assertIsNone(patient.work_lat)
+        self.assertIsNone(patient.work_long)
+
     def test_create_visit_from_patient_endpoint_links_patient_and_creates_geodata(self):
         response = self.client.post(
             reverse("patient-visits", args=[self.patient_one.id]),
@@ -950,10 +1090,74 @@ class PatientWorkflowTests(CoreAPITestCase):
         home_geodata = GeoData.objects.get(visit=visit, region_type="home")
         work_geodata = GeoData.objects.get(visit=visit, region_type="work")
         self.assertEqual(home_geodata.patient_id, self.patient_one.id)
+        self.assertEqual(visit.doctor_id, self.doctor.id)
+        self.assertEqual(visit.disease_id, self.disease_a.id)
         self.assertEqual(home_geodata.latitude, self.patient_one.residence_lat)
         self.assertEqual(home_geodata.longitude, self.patient_one.residence_long)
         self.assertEqual(work_geodata.latitude, self.patient_one.work_lat)
         self.assertEqual(work_geodata.longitude, self.patient_one.work_long)
+
+    def test_doctor_creates_visit_with_disease_code_without_doctor_id(self):
+        response = self.client.post(
+            reverse("patient-visits", args=[self.patient_one.id]),
+            self._visit_payload(disease_code=" mea "),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        visit = Visit.objects.get(id=response.json()["id"])
+        self.assertEqual(visit.doctor_id, self.doctor.id)
+        self.assertEqual(visit.disease_id, self.disease_a.id)
+
+    def test_create_visit_from_patient_endpoint_rejects_unknown_disease_code(self):
+        response = self.client.post(
+            reverse("patient-visits", args=[self.patient_one.id]),
+            self._visit_payload(disease_code="missing-code"),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("disease_code", response.json())
+
+    def test_doctor_user_without_doctor_record_cannot_create_patient_visit(self):
+        doctor_without_record = User.objects.create_user(
+            username="doctor-without-record",
+            password="secret123",
+            real_name="Doctor Without Record",
+            phon_number="0098",
+            role="doctor",
+        )
+        self.client.force_authenticate(user=doctor_without_record)
+
+        response = self.client.post(
+            reverse("patient-visits", args=[self.patient_one.id]),
+            self._visit_payload(),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("doctor", response.json())
+
+    def test_admin_creates_patient_visit_with_explicit_doctor_id(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            reverse("patient-visits", args=[self.patient_one.id]),
+            self._visit_payload(doctor_id=self.second_doctor.id),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        visit = Visit.objects.get(id=response.json()["id"])
+        self.assertEqual(visit.doctor_id, self.second_doctor.id)
+        self.assertEqual(visit.disease_id, self.disease_a.id)
+
+    def test_admin_patient_visit_requires_doctor_id(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            reverse("patient-visits", args=[self.patient_one.id]),
+            self._visit_payload(),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("doctor_id", response.json())
 
     def test_create_visit_from_patient_endpoint_ignores_missing_work_coordinates(self):
         patient = Patient.objects.create(
@@ -976,6 +1180,25 @@ class PatientWorkflowTests(CoreAPITestCase):
         visit = Visit.objects.get(id=response.json()["id"])
         geodata = GeoData.objects.filter(visit=visit).order_by("region_type")
         self.assertEqual(list(geodata.values_list("region_type", flat=True)), ["home"])
+        home_geodata = geodata.get(region_type="home")
+        self.assertEqual(home_geodata.latitude, patient.residence_lat)
+        self.assertEqual(home_geodata.longitude, patient.residence_long)
+        self.assertFalse(GeoData.objects.filter(visit=visit, region_type="work").exists())
+
+    def test_auto_geodata_creation_does_not_duplicate_visit_region_type(self):
+        response = self.client.post(
+            reverse("patient-visits", args=[self.patient_one.id]),
+            self._visit_payload(),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        visit = Visit.objects.get(id=response.json()["id"])
+
+        create_geodata_from_patient_coordinates(visit=visit)
+        create_geodata_from_patient_coordinates(visit=visit)
+
+        self.assertEqual(GeoData.objects.filter(visit=visit, region_type="home").count(), 1)
+        self.assertEqual(GeoData.objects.filter(visit=visit, region_type="work").count(), 1)
 
     def test_create_visit_from_patient_endpoint_rejects_patient_in_body(self):
         response = self.client.post(

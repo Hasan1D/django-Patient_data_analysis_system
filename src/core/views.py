@@ -33,6 +33,7 @@ from .serializers import (
     ReportSerializer,
     ResendEmailVerificationSerializer,
     SurgicalHistorySerializer,
+    UserAccountCreateSerializer,
     UserRegistrationSerializer,
     UserSerializer,
     VaccineSerializer,
@@ -249,7 +250,10 @@ class PatientViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="visits")
     def visits(self, request, pk=None):
         patient = self.get_object()
-        serializer = PatientVisitCreateSerializer(data=request.data)
+        serializer = PatientVisitCreateSerializer(
+            data=request.data,
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
 
         visit = create_visit_for_patient(
@@ -317,6 +321,13 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all().order_by("id")
     serializer_class = UserSerializer
     permission_classes = [IsAdminOnly]
+
+    @action(detail=False, methods=["post"], url_path="create-account")
+    def create_account(self, request):
+        serializer = UserAccountCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
 class DoctorViewSet(viewsets.ModelViewSet):
