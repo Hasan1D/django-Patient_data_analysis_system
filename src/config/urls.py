@@ -20,6 +20,8 @@ from rest_framework.routers import DefaultRouter
 from core.views import (
     RegisterView,
     RegistrationHospitalListView,
+    ActiveMapCasesView,
+    HistoricalMapCasesView,
     PatientViewSet , UserViewSet , DoctorViewSet , HospitalViewSet ,
     DiseaseViewSet ,VisitViewSet , GeoDataViewSet , 
     GeoClusterViewSet , ReportViewSet , LabTestViewSet,
@@ -55,6 +57,8 @@ urlpatterns += [
     path('api/auth/registration-hospitals/' , RegistrationHospitalListView.as_view() , name='auth-registration-hospitals'),
     path('api/auth/verify-email/' , VerifyEmailView.as_view() , name='auth-verify-email'),
     path('api/auth/resend-verification/' , ResendEmailVerificationView.as_view() , name='auth-resend-verification'),
+    path('api/maps/cases/' , HistoricalMapCasesView.as_view() , name='map-cases'),
+    path('api/maps/active-cases/' , ActiveMapCasesView.as_view() , name='map-active-cases'),
     path('api/token/' , TokenObtainPairView.as_view() , name='token_obtion_pair'),
     path('api/token/refresh/' , TokenRefreshView.as_view() , name='token_refresh'),
 ]

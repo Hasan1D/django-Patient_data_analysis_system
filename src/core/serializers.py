@@ -276,6 +276,48 @@ class RegistrationHospitalSerializer(serializers.ModelSerializer):
         )
 
 
+class MapCasesQuerySerializer(serializers.Serializer):
+    disease_code = serializers.CharField(required=False, trim_whitespace=True)
+    disease_type = serializers.CharField(required=False, trim_whitespace=True)
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
+    region_type = serializers.ChoiceField(
+        choices=GeoData.REGION_TYPE_CHOICES,
+        required=False,
+    )
+    status = serializers.ChoiceField(
+        choices=Visit.STATUS_CHOICES,
+        required=False,
+    )
+    limit = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=10000,
+        default=5000,
+    )
+
+    def validate_disease_code(self, value):
+        normalized_value = value.strip().upper()
+        if not normalized_value:
+            raise serializers.ValidationError("disease_code cannot be blank.")
+        return normalized_value
+
+    def validate_disease_type(self, value):
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise serializers.ValidationError("disease_type cannot be blank.")
+        return normalized_value
+
+    def validate(self, attrs):
+        start_date = attrs.get("start_date")
+        end_date = attrs.get("end_date")
+        if start_date and end_date and start_date > end_date:
+            raise serializers.ValidationError(
+                {"end_date": "end_date cannot be earlier than start_date."}
+            )
+        return attrs
+
+
 class DiseaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Disease

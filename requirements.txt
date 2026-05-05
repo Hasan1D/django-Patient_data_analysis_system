@@ -1,9 +1,14 @@
 asgiref==3.11.0
 Django==5.2.9
+channels==4.3.2
+channels_redis==4.3.0
+daphne==4.2.1
 django-filter==25.2
 djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
+msgpack==1.1.2
 PyJWT==2.10.1
+redis==7.4.0
 sqlparse==0.5.5
 tzdata==2025.3
 numpy

@@ -6,6 +6,7 @@ from .auth import (
 )
 from .diseases import DiseaseViewSet, LabTestViewSet
 from .geo import GeoClusterViewSet, GeoDataViewSet
+from .maps import ActiveMapCasesView, HistoricalMapCasesView
 from .patients import PatientViewSet
 from .reports import ReportViewSet
 from .users import DoctorViewSet, HospitalViewSet, UserViewSet
@@ -20,6 +21,8 @@ __all__ = [
     "LabTestViewSet",
     "GeoClusterViewSet",
     "GeoDataViewSet",
+    "ActiveMapCasesView",
+    "HistoricalMapCasesView",
     "PatientViewSet",
     "ReportViewSet",
     "DoctorViewSet",
