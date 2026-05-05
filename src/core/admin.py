@@ -1,10 +1,14 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db import transaction
 
 from .models import *
-from .services.account_service import create_linked_doctor_for_user
+from .services.account_service import (
+    approve_user_account,
+    create_linked_doctor_for_user,
+    update_user_activation_state,
+)
 # Register your models here.
 
 '''
@@ -39,6 +43,8 @@ class UserAccountAdminCreationForm(forms.ModelForm):
             "role",
             "is_staff",
             "is_active",
+            "email_verified",
+            "admin_approved",
         )
 
     def clean(self):
@@ -63,6 +69,9 @@ class UserAccountAdminCreationForm(forms.ModelForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.set_password(self.cleaned_data["password1"])
+        if user.is_active:
+            user.email_verified = True
+            user.admin_approved = True
         if commit:
             user.save()
         return user
@@ -80,6 +89,8 @@ class UserAdmin(BaseUserAdmin):
             'fields': (
                 'role',
                 'is_active',
+                'email_verified',
+                'admin_approved',
                 'is_staff',
                 'is_superuser',
                 'groups',
@@ -104,27 +115,65 @@ class UserAdmin(BaseUserAdmin):
                 'password2',
                 'is_staff',
                 'is_active',
+                'email_verified',
+                'admin_approved',
             ),
         }),
     )
 
-    list_display = ('username', 'real_name', 'role', 'is_staff', 'is_active')
+    list_display = (
+        'username',
+        'real_name',
+        'role',
+        'is_staff',
+        'is_active',
+        'email_verified',
+        'admin_approved',
+    )
+    list_filter = ('role', 'is_active', 'email_verified', 'admin_approved', 'is_staff')
     search_fields = ('username', 'real_name', 'email')
     ordering = ('username',)
+    actions = ('approve_doctor_accounts',)
 
     def save_model(self, request, obj, form, change):
-        if change:
-            super().save_model(request, obj, form, change)
-            return
-
         with transaction.atomic():
             super().save_model(request, obj, form, change)
+            if change:
+                if obj.role == User.ROLE_DOCTOR:
+                    update_user_activation_state(obj)
+                return
+
             if obj.role == User.ROLE_DOCTOR:
                 create_linked_doctor_for_user(
                     user=obj,
                     specialization=form.cleaned_data["specialization"],
                     hospital=form.cleaned_data["hospital"],
                 )
+                update_user_activation_state(obj)
+
+    @admin.action(description="Approve selected doctor accounts")
+    def approve_doctor_accounts(self, request, queryset):
+        approved_count = 0
+        skipped_count = 0
+        for user in queryset.filter(role=User.ROLE_DOCTOR):
+            if not Doctor.objects.filter(user=user).exists():
+                skipped_count += 1
+                continue
+            approve_user_account(user)
+            approved_count += 1
+
+        if approved_count:
+            self.message_user(
+                request,
+                f"Approved {approved_count} doctor account(s).",
+                messages.SUCCESS,
+            )
+        if skipped_count:
+            self.message_user(
+                request,
+                f"Skipped {skipped_count} doctor account(s) without linked Doctor records.",
+                messages.WARNING,
+            )
 
 
 @admin.register(EmailVerificationCode)

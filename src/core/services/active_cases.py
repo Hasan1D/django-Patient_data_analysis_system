@@ -5,6 +5,16 @@ from core.models import GeoData, Visit
 
 ACTIVE_VISIT_STATUS = Visit.STATUS_INFECTED
 INACTIVE_VISIT_STATUS = Visit.STATUS_CURED
+POINT_MODE_EXPOSURE = "exposure"
+POINT_MODE_CASE = "case"
+VALID_POINT_MODES = {POINT_MODE_EXPOSURE, POINT_MODE_CASE}
+
+
+def normalize_point_mode(point_mode: str | None) -> str:
+    normalized_mode = (point_mode or POINT_MODE_EXPOSURE).strip().lower()
+    if normalized_mode not in VALID_POINT_MODES:
+        raise ValueError("point_mode must be either 'exposure' or 'case'.")
+    return normalized_mode
 
 
 def latest_visits_per_patient_disease(
@@ -62,6 +72,13 @@ def one_geodata_per_visit_queryset(queryset: QuerySet | None = None) -> QuerySet
         .values("id")[:1]
     )
     return scoped_geodata.filter(id=Subquery(first_geodata_id))
+
+
+def apply_geodata_point_mode(queryset: QuerySet, *, point_mode: str | None = None) -> QuerySet:
+    normalized_mode = normalize_point_mode(point_mode)
+    if normalized_mode == POINT_MODE_CASE:
+        return one_geodata_per_visit_queryset(queryset)
+    return queryset
 
 
 def active_geodata_queryset(

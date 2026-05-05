@@ -18,6 +18,8 @@ class User(AbstractUser) :
     real_name = models.CharField(max_length=255)
     phon_number = models.CharField(max_length=20)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    email_verified = models.BooleanField(default=False)
+    admin_approved = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "user"

@@ -5,7 +5,7 @@ from django.db.models import Max
 
 from core.models import GeoData, Visit
 
-from .active_cases import active_geodata_queryset, one_geodata_per_visit_queryset
+from .active_cases import active_geodata_queryset, apply_geodata_point_mode, normalize_point_mode
 
 
 @dataclass(frozen=True)
@@ -43,8 +43,13 @@ def collect_active_spatial_points(
     date_from=None,
     date_to=None,
     region_type: str | None = None,
-    one_per_visit: bool = True,
+    point_mode: str = "exposure",
+    one_per_visit: bool | None = None,
 ) -> list[SpatialPoint]:
+    if one_per_visit is not None:
+        point_mode = "case" if one_per_visit else "exposure"
+    normalized_point_mode = normalize_point_mode(point_mode)
+
     resolved_date_from, resolved_date_to = resolve_spatial_date_window(
         disease_id=disease_id,
         lookback_days=lookback_days,
@@ -67,8 +72,7 @@ def collect_active_spatial_points(
     )
     if region_type:
         geodata = geodata.filter(region_type=region_type)
-    if one_per_visit:
-        geodata = one_geodata_per_visit_queryset(geodata)
+    geodata = apply_geodata_point_mode(geodata, point_mode=normalized_point_mode)
 
     geodata = geodata.order_by("visit__diagnosis_date", "id")
 

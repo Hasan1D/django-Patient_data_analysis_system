@@ -7,6 +7,7 @@ from django.core.mail import send_mail
 from django.utils import timezone
 
 from ..models import EmailVerificationCode
+from .account_service import mark_user_email_verified
 
 
 DEFAULT_CODE_EXPIRY_MINUTES = 10
@@ -81,8 +82,6 @@ def verify_email_code(user, code: str) -> bool:
         verification.save(update_fields=("attempts",))
         raise ValueError("Invalid verification code.")
 
-    if not user.is_active:
-        user.is_active = True
-        user.save(update_fields=("is_active",))
+    mark_user_email_verified(user)
     verification.delete()
     return True

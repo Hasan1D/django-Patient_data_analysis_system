@@ -17,6 +17,12 @@ class Command(BaseCommand):
         parser.add_argument("--date-from", help="Optional YYYY-MM-DD lower diagnosis date bound.")
         parser.add_argument("--date-to", help="Optional YYYY-MM-DD upper diagnosis date bound.")
         parser.add_argument("--region-type", help="Optional region_type filter.")
+        parser.add_argument(
+            "--point-mode",
+            choices=("exposure", "case"),
+            default="exposure",
+            help="exposure uses all active home/work points; case uses one point per visit.",
+        )
         parser.add_argument("--min-cluster-size", type=int, default=3, help="Minimum cluster size for HDBSCAN.")
         parser.add_argument("--min-samples", type=int, help="Optional HDBSCAN min_samples value.")
         parser.add_argument(
@@ -55,6 +61,7 @@ class Command(BaseCommand):
                 min_samples=options.get("min_samples"),
                 cluster_selection_method=options.get("cluster_selection_method"),
                 allow_single_cluster=options.get("allow_single_cluster"),
+                point_mode=options.get("point_mode"),
             )
         except (ImportError, ModuleNotFoundError) as exc:
             raise CommandError(f"HDBSCAN dependencies are not installed: {exc}") from exc

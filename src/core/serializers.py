@@ -46,14 +46,19 @@ class UserSerializer(serializers.ModelSerializer):
             "email",
             "role",
             "is_active",
+            "email_verified",
+            "admin_approved",
             "is_staff",
         )
-        read_only_fields = ("id", "is_staff")
+        read_only_fields = ("id", "is_staff", "email_verified", "admin_approved")
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     password_confirm = serializers.CharField(write_only=True, trim_whitespace=False)
+    specialization = serializers.CharField(write_only=True, trim_whitespace=True)
+    hospital_id = serializers.IntegerField(write_only=True)
 
     class Meta:
         model = User
@@ -65,6 +70,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             "email",
             "password",
             "password_confirm",
+            "specialization",
+            "hospital_id",
         )
         read_only_fields = ("id",)
 
@@ -80,16 +87,39 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if attrs["password"] != attrs["password_confirm"]:
             raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
         validate_password(attrs["password"])
+
+        errors = {}
+        specialization = attrs.get("specialization", "")
+        if not specialization.strip():
+            errors["specialization"] = "specialization is required for doctor registration."
+
+        hospital_id = attrs.get("hospital_id")
+        try:
+            attrs["hospital"] = Hospital.objects.get(id=hospital_id)
+        except Hospital.DoesNotExist:
+            errors["hospital_id"] = "Hospital with this id does not exist."
+
+        if errors:
+            raise serializers.ValidationError(errors)
         return attrs
 
     def create(self, validated_data):
         validated_data.pop("password_confirm")
         password = validated_data.pop("password")
-        return User.objects.create_user(
+        specialization = validated_data.pop("specialization")
+        validated_data.pop("hospital_id")
+        hospital = validated_data.pop("hospital")
+        return create_user_account(
+            user_data={
+                **validated_data,
+                "role": User.ROLE_DOCTOR,
+                "is_active": False,
+                "email_verified": False,
+                "admin_approved": False,
+            },
             password=password,
-            role=User.ROLE_DOCTOR,
-            is_active=False,
-            **validated_data,
+            specialization=specialization,
+            hospital=hospital,
         )
 
 
@@ -111,6 +141,8 @@ class UserAccountCreateSerializer(serializers.ModelSerializer):
             "password",
             "password_confirm",
             "is_active",
+            "email_verified",
+            "admin_approved",
             "is_staff",
             "specialization",
             "hospital_id",
@@ -118,6 +150,8 @@ class UserAccountCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
         extra_kwargs = {
             "is_active": {"required": False},
+            "email_verified": {"required": False},
+            "admin_approved": {"required": False},
             "is_staff": {"required": False},
         }
 
@@ -161,6 +195,13 @@ class UserAccountCreateSerializer(serializers.ModelSerializer):
         specialization = validated_data.pop("specialization", None)
         validated_data.pop("hospital_id", None)
         hospital = validated_data.pop("hospital", None)
+        is_active = validated_data.get("is_active", True)
+        if is_active:
+            validated_data["email_verified"] = True
+            validated_data["admin_approved"] = True
+        else:
+            validated_data["email_verified"] = False
+            validated_data["admin_approved"] = False
 
         return create_user_account(
             user_data=validated_data,
@@ -198,6 +239,8 @@ class ResendEmailVerificationSerializer(serializers.Serializer):
         if len(users) > 1:
             raise serializers.ValidationError("More than one account uses this email.")
         user = users[0]
+        if user.email_verified:
+            raise serializers.ValidationError("This account email is already verified.")
         if user.is_active and not hasattr(user, "email_verification_code"):
             raise serializers.ValidationError("This account is already active.")
         self.user = user
@@ -220,6 +263,17 @@ class HospitalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Hospital
         fields = "__all__"
+
+
+class RegistrationHospitalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Hospital
+        fields = (
+            "id",
+            "name",
+            "city",
+            "location",
+        )
 
 
 class DiseaseSerializer(serializers.ModelSerializer):

@@ -3,6 +3,36 @@ from django.db import transaction
 from core.models import Doctor, User
 
 
+def update_user_activation_state(user: User) -> User:
+    should_be_active = user.email_verified and user.admin_approved
+    if user.is_active != should_be_active:
+        user.is_active = should_be_active
+        user.save(update_fields=("is_active",))
+    return user
+
+
+def mark_user_email_verified(user: User) -> User:
+    user.email_verified = True
+    should_be_active = user.admin_approved
+    update_fields = ["email_verified"]
+    if user.is_active != should_be_active:
+        user.is_active = should_be_active
+        update_fields.append("is_active")
+    user.save(update_fields=update_fields)
+    return user
+
+
+def approve_user_account(user: User) -> User:
+    user.admin_approved = True
+    should_be_active = user.email_verified
+    update_fields = ["admin_approved"]
+    if user.is_active != should_be_active:
+        user.is_active = should_be_active
+        update_fields.append("is_active")
+    user.save(update_fields=update_fields)
+    return user
+
+
 def create_linked_doctor_for_user(*, user: User, specialization: str, hospital) -> Doctor:
     if user.role != User.ROLE_DOCTOR:
         raise ValueError("Doctor profile can only be created for doctor users.")

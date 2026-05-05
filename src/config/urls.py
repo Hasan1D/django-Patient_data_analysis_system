@@ -19,6 +19,7 @@ from django.urls import path , include
 from rest_framework.routers import DefaultRouter
 from core.views import (
     RegisterView,
+    RegistrationHospitalListView,
     PatientViewSet , UserViewSet , DoctorViewSet , HospitalViewSet ,
     DiseaseViewSet ,VisitViewSet , GeoDataViewSet , 
     GeoClusterViewSet , ReportViewSet , LabTestViewSet,
@@ -51,6 +52,7 @@ urlpatterns = [
 
 urlpatterns += [
     path('api/auth/register/' , RegisterView.as_view() , name='auth-register'),
+    path('api/auth/registration-hospitals/' , RegistrationHospitalListView.as_view() , name='auth-registration-hospitals'),
     path('api/auth/verify-email/' , VerifyEmailView.as_view() , name='auth-verify-email'),
     path('api/auth/resend-verification/' , ResendEmailVerificationView.as_view() , name='auth-resend-verification'),
     path('api/token/' , TokenObtainPairView.as_view() , name='token_obtion_pair'),

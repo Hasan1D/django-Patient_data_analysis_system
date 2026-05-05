@@ -15,6 +15,8 @@ class HDBSCANClusterCandidate:
     disease_id: int
     disease_code: str
     point_count: int
+    unique_visit_count: int
+    unique_patient_count: int
     member_geodata_ids: list[int]
     member_visit_ids: list[int]
     center_lat: float
@@ -73,6 +75,8 @@ def _build_cluster_candidate(
         disease_id=disease.id,
         disease_code=disease.disease_code,
         point_count=len(points),
+        unique_visit_count=len({point.visit_id for point in points}),
+        unique_patient_count=len({point.patient_id for point in points}),
         member_geodata_ids=sorted({point.geodata_id for point in points}),
         member_visit_ids=sorted({point.visit_id for point in points}),
         center_lat=round(center_lat, 6),
@@ -98,6 +102,7 @@ def detect_hdbscan_clusters(
     min_samples: int | None = None,
     cluster_selection_method: str = "eom",
     allow_single_cluster: bool = False,
+    point_mode: str = "exposure",
 ) -> HDBSCANDetectionResult:
     if min_cluster_size < 2:
         raise ValueError("min_cluster_size must be at least 2.")
@@ -112,7 +117,7 @@ def detect_hdbscan_clusters(
         date_from=date_from,
         date_to=date_to,
         region_type=region_type,
-        one_per_visit=True,
+        point_mode=point_mode,
     )
     if len(points) < min_cluster_size:
         return HDBSCANDetectionResult(clusters=[], noise_count=len(points))
@@ -194,7 +199,7 @@ def persist_hdbscan_clusters(*, clusters: Iterable[HDBSCANClusterCandidate]) -> 
                 center_long=candidate.center_long,
                 radius=candidate.radius_km,
                 disease_id=candidate.disease_id,
-                case_count=candidate.point_count,
+                case_count=candidate.unique_visit_count,
                 risk_level=candidate.risk_level,
             )
             persisted_ids.append(cluster.id)
@@ -203,7 +208,7 @@ def persist_hdbscan_clusters(*, clusters: Iterable[HDBSCANClusterCandidate]) -> 
         existing_cluster.center_lat = round((existing_cluster.center_lat + candidate.center_lat) / 2, 6)
         existing_cluster.center_long = round((existing_cluster.center_long + candidate.center_long) / 2, 6)
         existing_cluster.radius = round(max(existing_cluster.radius, candidate.radius_km, 0.1), 4)
-        existing_cluster.case_count = max(existing_cluster.case_count, candidate.point_count)
+        existing_cluster.case_count = max(existing_cluster.case_count, candidate.unique_visit_count)
         existing_cluster.risk_level = max(existing_cluster.risk_level, candidate.risk_level)
         existing_cluster.save()
         persisted_ids.append(existing_cluster.id)
