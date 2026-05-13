@@ -5,6 +5,7 @@ from django.utils import timezone
 from core.models import GeoCluster, GeoData
 
 from .contracts import OutbreakAnalysis, VisitOutbreakContext
+from .postgis import filter_geoclusters_within_radius
 from .spatial import distance_km
 
 
@@ -25,6 +26,12 @@ def _find_existing_cluster(
         disease_id=context.disease_id,
         generated_at__gte=timezone.now() - timedelta(days=30),
     ).order_by("-generated_at")
+    recent_clusters = filter_geoclusters_within_radius(
+        recent_clusters,
+        latitude=context.latitude,
+        longitude=context.longitude,
+        radius_km=30.0,
+    )
 
     for cluster in recent_clusters:
         threshold_radius = max(cluster.radius, 3.0)

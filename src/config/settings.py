@@ -26,6 +26,33 @@ except ImportError:
 from django.core.exceptions import ImproperlyConfigured
 
 
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_env_file(BASE_DIR.parent / ".env")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_list(name: str, default: tuple[str, ...] = ()) -> list[str]:
+    return [
+        value.strip()
+        for value in os.getenv(name, ",".join(default)).split(",")
+        if value.strip()
+    ]
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
@@ -34,16 +61,25 @@ DEFAULT_DEV_SECRET_KEY = "django-insecure-1u2$!hanb(5pvpg*xi0(eh%)vzgln&m1=_htdm
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", DEFAULT_DEV_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DJANGO_DEBUG", "True").strip().lower() in {"1", "true", "yes", "on"}
+DEBUG = _env_bool("DJANGO_DEBUG", True)
 
 if not DEBUG and SECRET_KEY == DEFAULT_DEV_SECRET_KEY:
     raise ImproperlyConfigured("Set DJANGO_SECRET_KEY when DJANGO_DEBUG is disabled.")
 
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",")
-    if host.strip()
-]
+DEFAULT_ALLOWED_HOSTS = ("localhost", "127.0.0.1", "[::1]") if DEBUG else ()
+ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS)
+
+DEFAULT_FRONTEND_ORIGINS = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+)
+CORS_ALLOW_ALL_ORIGINS = _env_bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", False)
+CORS_ALLOWED_ORIGINS = _env_list("DJANGO_CORS_ALLOWED_ORIGINS", DEFAULT_FRONTEND_ORIGINS)
+CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS", tuple(CORS_ALLOWED_ORIGINS))
 
 
 # Application definition
@@ -59,6 +95,7 @@ INSTALLED_APPS = [
     
     #my app
     'channels',
+    'corsheaders',
     'django_filters',
     'rest_framework',
     'core' ,
@@ -82,6 +119,7 @@ REST_FRAMEWORK = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -130,13 +168,32 @@ else:
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+#
+# Local development keeps SQLite by default. Set DJANGO_DATABASE_ENGINE=postgres
+# and the POSTGRES_* variables below to run on PostgreSQL with PostGIS enabled.
+DATABASE_ENGINE = os.getenv("DJANGO_DATABASE_ENGINE", "sqlite").strip().lower()
+if DATABASE_ENGINE in {"postgres", "postgresql", "postgis"}:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "dis_sys"),
+            "USER": os.getenv("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+            "CONN_MAX_AGE": int(os.getenv("POSTGRES_CONN_MAX_AGE", "60")),
+            "OPTIONS": {
+                "sslmode": os.getenv("POSTGRES_SSLMODE", "prefer"),
+            },
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation

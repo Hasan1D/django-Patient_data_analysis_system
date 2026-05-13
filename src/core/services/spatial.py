@@ -5,6 +5,7 @@ from core.models import GeoData, Visit
 
 from .active_cases import active_visits_queryset
 from .contracts import NearbyCase, VisitOutbreakContext
+from .postgis import annotate_geodata_distance, filter_geodata_within_radius
 
 
 def distance_km(
@@ -58,6 +59,17 @@ def find_nearby_cases(
         candidates = candidates.exclude(visit_id=context.visit_id)
     if region_type:
         candidates = candidates.filter(region_type=region_type)
+    candidates = filter_geodata_within_radius(
+        candidates,
+        latitude=context.latitude,
+        longitude=context.longitude,
+        radius_km=radius_km,
+    )
+    candidates = annotate_geodata_distance(
+        candidates,
+        latitude=context.latitude,
+        longitude=context.longitude,
+    )
 
     nearby_cases_by_visit: dict[int, NearbyCase] = {}
 
