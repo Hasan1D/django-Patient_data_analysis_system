@@ -13,10 +13,17 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 import os
 from pathlib import Path
 
-from django.core.exceptions import ImproperlyConfigured
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / ".env")  # يقرأ src/.env تلقائياً
+except ImportError:
+    pass  # python-dotenv غير مثبت، سيعتمد على متغيرات النظام
+
+from django.core.exceptions import ImproperlyConfigured
 
 
 # Quick-start development settings - unsuitable for production
