@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 @receiver(post_save, sender=GeoData)
 def trigger_monitoring_after_geodata_save(sender, instance: GeoData, **kwargs):
+    if kwargs.get("raw"):
+        return
+
     def _run_monitoring():
         try:
             run_monitoring_for_geodata(geodata=instance)
@@ -25,6 +28,9 @@ def trigger_monitoring_after_geodata_save(sender, instance: GeoData, **kwargs):
 
 @receiver(post_save, sender=GeoData)
 def broadcast_map_event_after_geodata_save(sender, instance: GeoData, created: bool, **kwargs):
+    if kwargs.get("raw"):
+        return
+
     def _broadcast_map_event():
         try:
             broadcast_geodata_change(geodata=instance, created=created)
@@ -36,6 +42,8 @@ def broadcast_map_event_after_geodata_save(sender, instance: GeoData, created: b
 
 @receiver(post_save, sender=Visit)
 def broadcast_map_event_after_visit_save(sender, instance: Visit, created: bool, **kwargs):
+    if kwargs.get("raw"):
+        return
     if created:
         return
 
@@ -50,5 +58,7 @@ def broadcast_map_event_after_visit_save(sender, instance: Visit, created: bool,
 
 @receiver(post_save, sender=Patient)
 def create_medical_history_after_patient_create(sender, instance: Patient, created: bool, **kwargs):
+    if kwargs.get("raw"):
+        return
     if created:
         MedicalHistory.objects.get_or_create(patient=instance)

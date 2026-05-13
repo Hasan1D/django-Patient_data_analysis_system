@@ -8,6 +8,7 @@ from django.utils import timezone
 from core.models import Disease, GeoCluster, GeoData, Visit
 
 from .active_cases import active_geodata_queryset, apply_geodata_point_mode, normalize_point_mode
+from .postgis import filter_geoclusters_within_radius
 from .spatial import distance_km
 
 
@@ -253,6 +254,12 @@ def _find_existing_dbscan_cluster(*, candidate: DBSCANClusterCandidate) -> GeoCl
         disease_id=candidate.disease_id,
         generated_at__gte=timezone.now() - timedelta(days=30),
     ).order_by("-generated_at")
+    recent_clusters = filter_geoclusters_within_radius(
+        recent_clusters,
+        latitude=candidate.center_lat,
+        longitude=candidate.center_long,
+        radius_km=max(candidate.radius_km, 3.0),
+    )
 
     for cluster in recent_clusters:
         threshold_radius = max(cluster.radius, candidate.radius_km, 3.0)

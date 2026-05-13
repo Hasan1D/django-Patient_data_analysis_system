@@ -33,3 +33,4 @@ Thumbs.db
 /docs/
 /src/db.sqlite3
 /src/dp.sqlite3
+/src/backup_data.json

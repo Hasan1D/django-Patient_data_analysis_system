@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from core.models import Disease, GeoCluster
 
+from .postgis import filter_geoclusters_within_radius
 from .spatial import distance_km
 from .spatial_points import SpatialPoint, collect_active_spatial_points
 
@@ -174,6 +175,12 @@ def _find_existing_hdbscan_cluster(*, candidate: HDBSCANClusterCandidate) -> Geo
         disease_id=candidate.disease_id,
         generated_at__gte=timezone.now() - timedelta(days=30),
     ).order_by("-generated_at")
+    recent_clusters = filter_geoclusters_within_radius(
+        recent_clusters,
+        latitude=candidate.center_lat,
+        longitude=candidate.center_long,
+        radius_km=max(candidate.radius_km, 3.0),
+    )
 
     for cluster in recent_clusters:
         threshold_radius = max(cluster.radius, candidate.radius_km, 3.0)
