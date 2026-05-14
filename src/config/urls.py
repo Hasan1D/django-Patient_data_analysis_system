@@ -25,15 +25,15 @@ from core.views import (
     PatientViewSet , UserViewSet , DoctorViewSet , HospitalViewSet ,
     DiseaseViewSet ,VisitViewSet , GeoDataViewSet , 
     GeoClusterViewSet , ReportViewSet , LabTestViewSet,
+    SupportTicketViewSet,
     ResendEmailVerificationView,
     VerifyEmailView,
 )
 
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
 )
-
+from core.views.auth import CustomTokenObtainPairView
 
 router = DefaultRouter()
 router.register(r'patients' , PatientViewSet)
@@ -46,6 +46,8 @@ router.register(r'geodata' , GeoDataViewSet)
 router.register(r'geoclusters' , GeoClusterViewSet)
 router.register(r'reports', ReportViewSet)
 router.register(r'lab-tests', LabTestViewSet)
+router.register(r'support', SupportTicketViewSet, basename='supportticket')
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -59,6 +61,6 @@ urlpatterns += [
     path('api/auth/resend-verification/' , ResendEmailVerificationView.as_view() , name='auth-resend-verification'),
     path('api/maps/cases/' , HistoricalMapCasesView.as_view() , name='map-cases'),
     path('api/maps/active-cases/' , ActiveMapCasesView.as_view() , name='map-active-cases'),
-    path('api/token/' , TokenObtainPairView.as_view() , name='token_obtion_pair'),
+    path('api/token/' , CustomTokenObtainPairView.as_view() , name='token_obtion_pair'),
     path('api/token/refresh/' , TokenRefreshView.as_view() , name='token_refresh'),
 ]

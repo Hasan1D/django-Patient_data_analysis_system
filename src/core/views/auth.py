@@ -79,3 +79,11 @@ class ResendEmailVerificationView(APIView):
         send_email_verification_code(serializer.user)
 
         return Response({"message": "Verification code sent."})
+
+
+from rest_framework_simplejwt.views import TokenObtainPairView
+from ..serializers import CustomTokenObtainPairSerializer
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+

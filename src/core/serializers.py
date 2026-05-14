@@ -11,6 +11,8 @@ from .models import (
     MedicalHistory,
     Patient,
     Report,
+    SupportMessage,
+    SupportTicket,
     SurgicalHistory,
     User,
     Vaccine,
@@ -581,3 +583,50 @@ class PatientSurgicalHistoryCreateSerializer(URLLinkedModelSerializer):
             "surgery_date",
             "has_metal_plates",
         )
+
+
+class SupportMessageSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.username', read_only=True)
+    user_role = serializers.CharField(source='user.role', read_only=True)
+
+    class Meta:
+        model = SupportMessage
+        fields = ['id', 'ticket', 'user', 'user_name', 'user_role', 'message', 'created_at']
+        read_only_fields = ['ticket', 'user', 'created_at']
+
+
+class SupportTicketSerializer(serializers.ModelSerializer):
+    messages = SupportMessageSerializer(many=True, read_only=True)
+    user_name = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = SupportTicket
+        fields = ['id', 'user', 'user_name', 'subject', 'status', 'priority', 'created_at', 'updated_at', 'messages']
+        read_only_fields = ['user', 'created_at', 'updated_at']
+
+
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.exceptions import AuthenticationFailed
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        username = attrs.get(self.username_field)
+        password = attrs.get('password')
+
+        if username and password:
+            user = User.objects.filter(**{self.username_field: username}).first()
+            if user:
+                if user.check_password(password):
+                    if not user.is_active:
+                        raise AuthenticationFailed({"is_active": False})
+                    # If everything is fine, proceed to default generation
+                else:
+                    raise AuthenticationFailed({"invalid_credentials": True})
+            else:
+                raise AuthenticationFailed({"invalid_credentials": True})
+        else:
+            raise AuthenticationFailed({"invalid_credentials": True})
+
+        return super().validate(attrs)
+
+
