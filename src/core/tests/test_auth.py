@@ -100,6 +100,41 @@ class PermissionTests(CoreAPITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_doctor_can_view_own_profile(self):
+        self.client.force_authenticate(user=self.doctor_user)
+
+        response = self.client.get(reverse("doctor-me"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["id"], self.doctor.id)
+        self.assertEqual(response.json()["user"], self.doctor_user.id)
+        self.assertEqual(response.json()["hospital"], self.hospital.id)
+
+    def test_doctor_can_update_own_profile_without_changing_user_link(self):
+        self.client.force_authenticate(user=self.doctor_user)
+
+        response = self.client.patch(
+            reverse("doctor-me"),
+            {
+                "specialization": "Cardiology",
+                "user": self.second_doctor_user.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.doctor.refresh_from_db()
+        self.assertEqual(self.doctor.specialization, "Cardiology")
+        self.assertEqual(self.doctor.user_id, self.doctor_user.id)
+        self.assertEqual(response.json()["user"], self.doctor_user.id)
+
+    def test_admin_cannot_use_doctor_me_endpoint(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.get(reverse("doctor-me"))
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_visits_endpoint_requires_doctor_or_admin(self):
         response = self.client.get(reverse("visit-list"))
 

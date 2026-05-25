@@ -148,10 +148,29 @@ class PatientWorkflowTests(CoreAPITestCase):
         self.assertEqual(home_geodata.patient_id, self.patient_one.id)
         self.assertEqual(visit.doctor_id, self.doctor.id)
         self.assertEqual(visit.disease_id, self.disease_a.id)
+        self.assertEqual(response.json()["doctor_info"]["id"], self.doctor.id)
+        self.assertEqual(response.json()["doctor_info"]["real_name"], "Doctor One")
+        self.assertEqual(response.json()["doctor_info"]["specialization"], "Epidemiology")
         self.assertEqual(home_geodata.latitude, self.patient_one.residence_lat)
         self.assertEqual(home_geodata.longitude, self.patient_one.residence_long)
         self.assertEqual(work_geodata.latitude, self.patient_one.work_lat)
         self.assertEqual(work_geodata.longitude, self.patient_one.work_long)
+
+    def test_patient_visits_endpoint_lists_doctor_info_for_visit_history(self):
+        response = self.client.get(reverse("patient-visits", args=[self.patient_one.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        visits_by_id = {visit["id"]: visit for visit in response.json()}
+
+        self.assertIn(self.visit_a1.id, visits_by_id)
+        self.assertIn(self.visit_b1.id, visits_by_id)
+        previous_doctor_info = visits_by_id[self.visit_b1.id]["doctor_info"]
+        self.assertEqual(previous_doctor_info["id"], self.second_doctor.id)
+        self.assertEqual(previous_doctor_info["username"], "doctor2")
+        self.assertEqual(previous_doctor_info["real_name"], "Doctor Two")
+        self.assertEqual(previous_doctor_info["specialization"], "Internal Medicine")
+        self.assertEqual(previous_doctor_info["hospital"], self.hospital.id)
+        self.assertEqual(previous_doctor_info["hospital_name"], "Central Hospital")
 
     def test_doctor_creates_visit_with_disease_code_without_doctor_id(self):
         response = self.client.post(

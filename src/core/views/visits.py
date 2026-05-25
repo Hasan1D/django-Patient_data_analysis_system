@@ -21,7 +21,12 @@ from core.views.utils import _to_bool
 
 
 class VisitViewSet(viewsets.ModelViewSet):
-    queryset = Visit.objects.all()
+    queryset = Visit.objects.select_related(
+        "patient",
+        "doctor__user",
+        "doctor__hospital",
+        "disease",
+    ).all()
     serializer_class = VisitSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_class = VisitFilter

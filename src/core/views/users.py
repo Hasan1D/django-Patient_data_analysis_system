@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from core.models import Doctor, Hospital, User
 from core.permissions import IsAdminOnly
 from core.serializers import (
+    DoctorMeSerializer,
     DoctorSerializer,
     HospitalSerializer,
     UserAccountCreateSerializer,
@@ -62,6 +63,31 @@ class DoctorViewSet(viewsets.ModelViewSet):
     queryset = Doctor.objects.all()
     serializer_class = DoctorSerializer
     permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=["get", "patch"], url_path="me")
+    def me(self, request):
+        if request.user.role != User.ROLE_DOCTOR:
+            return Response(
+                {"detail": "Only doctors can access this endpoint."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            doctor = Doctor.objects.get(user=request.user)
+        except Doctor.DoesNotExist:
+            return Response(
+                {"detail": "No Doctor record is linked to the logged-in user."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if request.method == "PATCH":
+            serializer = DoctorMeSerializer(doctor, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+
+        serializer = DoctorMeSerializer(doctor)
+        return Response(serializer.data)
 
 
 class HospitalViewSet(viewsets.ModelViewSet):

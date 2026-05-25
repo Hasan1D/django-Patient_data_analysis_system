@@ -87,6 +87,7 @@ GET /api/auth/registration-hospitals/
 ```text
 /api/patients/
 /api/doctors/
+/api/doctors/me/
 /api/hospitals/
 /api/diseases/
 /api/visits/
@@ -96,6 +97,22 @@ GET /api/auth/registration-hospitals/
 /api/lab-tests/
 /api/maps/cases/
 /api/maps/active-cases/
+```
+
+Patient visit history:
+
+```http
+GET /api/patients/{id}/visits/
+```
+
+Each visit includes `doctor_info` with the doctor's name, username,
+specialization, hospital id, and hospital name.
+
+Current doctor profile:
+
+```http
+GET /api/doctors/me/
+PATCH /api/doctors/me/
 ```
 
 ## Useful Analytics Endpoints

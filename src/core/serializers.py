@@ -261,6 +261,13 @@ class DoctorSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class DoctorMeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Doctor
+        fields = "__all__"
+        read_only_fields = ("id", "user")
+
+
 class HospitalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Hospital
@@ -348,7 +355,26 @@ class DiseaseSerializer(serializers.ModelSerializer):
         return value
 
 
+class VisitDoctorInfoSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    real_name = serializers.CharField(source="user.real_name", read_only=True)
+    hospital_name = serializers.CharField(source="hospital.name", read_only=True)
+
+    class Meta:
+        model = Doctor
+        fields = (
+            "id",
+            "username",
+            "real_name",
+            "specialization",
+            "hospital",
+            "hospital_name",
+        )
+
+
 class VisitSerializer(serializers.ModelSerializer):
+    doctor_info = VisitDoctorInfoSerializer(source="doctor", read_only=True)
+
     class Meta:
         model = Visit
         fields = "__all__"

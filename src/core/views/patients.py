@@ -2,7 +2,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from core.models import Patient
+from core.models import Patient, Visit
 from core.permissions import IsDoctorOrAdmin
 from core.serializers import (
     AllergySerializer,
@@ -31,9 +31,24 @@ class PatientViewSet(viewsets.ModelViewSet):
     serializer_class = PatientSerializer
     permission_classes = [IsDoctorOrAdmin]
 
-    @action(detail=True, methods=["post"], url_path="visits")
+    @action(detail=True, methods=["get", "post"], url_path="visits")
     def visits(self, request, pk=None):
         patient = self.get_object()
+
+        if request.method == "GET":
+            visits = (
+                Visit.objects.select_related(
+                    "patient",
+                    "doctor__user",
+                    "doctor__hospital",
+                    "disease",
+                )
+                .filter(patient=patient)
+                .order_by("-diagnosis_date", "-id")
+            )
+            serializer = VisitSerializer(visits, many=True)
+            return Response(serializer.data)
+
         serializer = PatientVisitCreateSerializer(
             data=request.data,
             context={"request": request},
