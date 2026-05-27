@@ -157,12 +157,12 @@ class Visit(models.Model):
     MARITAL_STATUS_DIVORCED = "divorced"
     MARITAL_STATUS_SINGLE = "single"
     MARITAL_STATUS_MARRIED = "married"
-    MARITAL_STATUS_WIDOW_ER = "widow(er)"
+    MARITAL_STATUS_WIDOW = "widow"
     MARITAL_STATUS_CHOICES = [
         (MARITAL_STATUS_DIVORCED, "Divorced"),
         (MARITAL_STATUS_SINGLE, "Single"),
         (MARITAL_STATUS_MARRIED, "Married"),
-        (MARITAL_STATUS_WIDOW_ER, "Widow(er)"),
+        (MARITAL_STATUS_WIDOW, "Widow"),
     ]
 
     patient = models.ForeignKey(Patient , on_delete=models.CASCADE)   
@@ -182,7 +182,7 @@ class Visit(models.Model):
                 name="core_visit_status_infected_or_cured",
             ),
             models.CheckConstraint(
-                condition=models.Q(marital_status__in=["divorced", "single", "married", "widow(er)"]),
+                condition=models.Q(marital_status__in=["divorced", "single", "married", "widow"]),
                 name="core_visit_marital_status_valid",
             ),
         ]

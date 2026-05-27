@@ -417,6 +417,22 @@ class SerializerTests(CoreAPITestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn("marital_status", serializer.errors)
 
+    def test_visit_serializer_accepts_widow_marital_status(self):
+        serializer = VisitSerializer(
+            data={
+                "patient": self.patient_one.id,
+                "doctor": self.doctor.id,
+                "disease": self.disease_a.id,
+                "diagnosis_date": "2026-04-12",
+                "status": "infected",
+                "weight": 70,
+                "height": 175,
+                "marital_status": "widow",
+            }
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
     def test_disease_serializer_normalizes_code_and_rejects_negative_scores(self):
         serializer = DiseaseSerializer(
             data={
