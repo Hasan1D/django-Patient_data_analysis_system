@@ -292,3 +292,20 @@ class LabTestAdmin(admin.ModelAdmin):
     list_display = ('id', 'visit', 'test_code', 'test_name', 'test_date')
     search_fields = ('test_code', 'test_name', 'visit__patient__name')
     list_filter = ('test_date',)
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ('id', 'username', 'method', 'path', 'status_code', 'ip_address', 'created_at')
+    search_fields = ('username', 'path', 'ip_address')
+    list_filter = ('method', 'status_code', 'created_at')
+    readonly_fields = (
+        'user',
+        'username',
+        'method',
+        'path',
+        'status_code',
+        'ip_address',
+        'user_agent',
+        'created_at',
+    )

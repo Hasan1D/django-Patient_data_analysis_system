@@ -11,6 +11,7 @@ from core.models import GeoData, User, Visit
 from core.permissions import IsDoctorOrAdmin
 from core.serializers import LabTestSerializer, VisitLabTestCreateSerializer, VisitSerializer
 from core.services import VisitOutbreakContext
+from core.services.access_control import visits_visible_to_user
 from core.services.alert_policies import get_policy_for_disease
 from core.services.cluster_service import create_cluster_from_analysis
 from core.services.outbreak_engine import evaluate_visit_outbreak
@@ -32,6 +33,12 @@ class VisitViewSet(viewsets.ModelViewSet):
     filterset_class = VisitFilter
     permission_classes = [IsDoctorOrAdmin]
 
+    def get_queryset(self):
+        return visits_visible_to_user(
+            super().get_queryset(),
+            self.request.user,
+        ).order_by("-diagnosis_date", "-id")
+
     @action(detail=True, methods=["post"], url_path="lab-tests")
     def lab_tests(self, request, pk=None):
         visit = self.get_object()
@@ -46,7 +53,7 @@ class VisitViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def cases_by_disease(self, request):
-        visits = VisitFilter(request.GET, queryset=Visit.objects.all()).qs
+        visits = self.filter_queryset(self.get_queryset())
         qs = (
             visits.values("disease__id", "disease__name")
             .annotate(total_cases=Count("id"))
@@ -56,7 +63,7 @@ class VisitViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def cases_over_time(self, request):
-        visits = VisitFilter(request.GET, queryset=Visit.objects.all()).qs
+        visits = self.filter_queryset(self.get_queryset())
         qs = (
             visits.values("diagnosis_date")
             .annotate(total_cases=Count("id"))
@@ -66,7 +73,7 @@ class VisitViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def cases_by_doctor(self, request):
-        visits = VisitFilter(request.GET, queryset=Visit.objects.all()).qs
+        visits = self.filter_queryset(self.get_queryset())
         qs = (
             visits.values("doctor__id", "doctor__user__username")
             .annotate(total_cases=Count("id"))
@@ -76,7 +83,7 @@ class VisitViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def cases_by_region_type(self, request):
-        visits = VisitFilter(request.GET, queryset=Visit.objects.all()).qs
+        visits = self.filter_queryset(self.get_queryset())
         geodata = GeoData.objects.filter(visit__in=visits)
         geodata = GeoDataFilter(request.GET, queryset=geodata).qs
         qs = (
@@ -88,7 +95,7 @@ class VisitViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def disease_region_matrix(self, request):
-        visits = VisitFilter(request.GET, queryset=Visit.objects.all()).qs
+        visits = self.filter_queryset(self.get_queryset())
         geodata = GeoData.objects.filter(visit__in=visits)
         geodata = GeoDataFilter(request.GET, queryset=geodata).qs
         qs = (

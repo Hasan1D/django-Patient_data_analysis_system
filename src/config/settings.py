@@ -10,7 +10,9 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import importlib.util
 import os
+from datetime import timedelta
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -83,6 +85,7 @@ CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS", tuple(CORS_ALLOW
 
 
 # Application definition
+HAS_DRF_SPECTACULAR = importlib.util.find_spec("drf_spectacular") is not None
 
 INSTALLED_APPS = [
     'daphne',
@@ -98,12 +101,11 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'rest_framework',
+    *(["drf_spectacular"] if HAS_DRF_SPECTACULAR else []),
     'core' ,
 ]
    
 # هي اضفناها مشان الامان
-from datetime import timedelta
-
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES' : (
         'rest_framework_simplejwt.authentication.JWTAuthentication' ,
@@ -112,6 +114,35 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend'
     ] ,
+    'DEFAULT_PAGINATION_CLASS': 'core.pagination.OptionalPageNumberPagination',
+    'PAGE_SIZE': int(os.getenv("DJANGO_API_PAGE_SIZE", "100")),
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': os.getenv("DJANGO_THROTTLE_ANON", "300/day"),
+        'user': os.getenv("DJANGO_THROTTLE_USER", "2000/day"),
+        'auth_login': os.getenv("DJANGO_THROTTLE_AUTH_LOGIN", "20/minute"),
+        'auth_register': os.getenv("DJANGO_THROTTLE_AUTH_REGISTER", "10/hour"),
+        'email_verify': os.getenv("DJANGO_THROTTLE_EMAIL_VERIFY", "20/hour"),
+        'email_resend': os.getenv("DJANGO_THROTTLE_EMAIL_RESEND", "5/hour"),
+    },
+}
+
+if HAS_DRF_SPECTACULAR:
+    REST_FRAMEWORK['DEFAULT_SCHEMA_CLASS'] = 'drf_spectacular.openapi.AutoSchema'
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Patient Data Analysis API",
+    "DESCRIPTION": "Backend API for patient records, disease surveillance, maps, and alerts.",
+    "VERSION": "1.0.0",
+    "ENUM_NAME_OVERRIDES": {
+        "VisitStatusEnum": "core.models.Visit.STATUS_CHOICES",
+        "ReportStatusEnum": "core.models.Report.STATUS_CHOICES",
+        "SupportTicketStatusEnum": "core.models.SupportTicket.STATUS_CHOICES",
+    },
 }
 
 
@@ -123,6 +154,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.AuditLogMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -159,6 +191,8 @@ if REDIS_URL:
         },
     }
 else:
+    if not DEBUG:
+        raise ImproperlyConfigured("Set REDIS_URL when DJANGO_DEBUG is disabled.")
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels.layers.InMemoryChannelLayer",
@@ -248,6 +282,9 @@ EMAIL_VERIFICATION_CODE_EXPIRY_MINUTES = int(
 )
 EMAIL_VERIFICATION_CODE_LENGTH = int(os.getenv("EMAIL_VERIFICATION_CODE_LENGTH", "6"))
 EMAIL_VERIFICATION_MAX_ATTEMPTS = int(os.getenv("EMAIL_VERIFICATION_MAX_ATTEMPTS", "5"))
+
+# API audit trail
+AUDIT_LOG_ENABLED = _env_bool("DJANGO_AUDIT_LOG_ENABLED", True)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

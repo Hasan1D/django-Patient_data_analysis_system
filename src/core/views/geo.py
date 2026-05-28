@@ -7,6 +7,7 @@ from core.filters import GeoDataFilter, VisitFilter
 from core.models import Disease, GeoCluster, GeoData, Visit
 from core.permissions import IsAdminOnly, IsDoctorOrAdmin
 from core.serializers import GeoClusterSerializer, GeoDataSerializer
+from core.services.access_control import geodata_visible_to_user, visits_visible_to_user
 from core.services.active_cases import (
     POINT_MODE_EXPOSURE,
     active_geodata_queryset,
@@ -27,9 +28,20 @@ from core.views.utils import _active_hotspots_queryset, _to_bool, _to_float, _to
 
 
 class GeoDataViewSet(viewsets.ModelViewSet):
-    queryset = GeoData.objects.all()
+    queryset = GeoData.objects.select_related(
+        "patient",
+        "visit__patient",
+        "visit__doctor__hospital",
+        "visit__disease",
+    ).all()
     serializer_class = GeoDataSerializer
     permission_classes = [IsDoctorOrAdmin]
+
+    def get_queryset(self):
+        return geodata_visible_to_user(
+            super().get_queryset(),
+            self.request.user,
+        ).order_by("id")
 
     @action(detail=False, methods=["get"])
     def active(self, request):
@@ -38,9 +50,20 @@ class GeoDataViewSet(viewsets.ModelViewSet):
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        visits = VisitFilter(request.GET, queryset=Visit.objects.all()).qs
+        visits = VisitFilter(
+            request.GET,
+            queryset=visits_visible_to_user(Visit.objects.all(), request.user),
+        ).qs
         geodata = active_geodata_queryset(
-            GeoData.objects.all(),
+            geodata_visible_to_user(
+                GeoData.objects.select_related(
+                    "patient",
+                    "visit__patient",
+                    "visit__doctor__hospital",
+                    "visit__disease",
+                ),
+                request.user,
+            ),
             visit_queryset=visits,
             constrain_latest_to_queryset=False,
         )

@@ -8,6 +8,7 @@ from typing import Iterable
 from django.db.models import QuerySet
 
 from core.models import GeoData, Visit
+from core.services.access_control import geodata_visible_to_user, visits_visible_to_user
 from core.services.active_cases import active_geodata_queryset
 
 
@@ -87,15 +88,26 @@ def _apply_common_filters(queryset: QuerySet, filters: MapCaseFilters) -> QueryS
     return queryset
 
 
-def historical_map_cases_queryset(filters: MapCaseFilters) -> QuerySet:
-    queryset = GeoData.objects.select_related("visit__disease").all()
+def historical_map_cases_queryset(filters: MapCaseFilters, *, user=None) -> QuerySet:
+    queryset = GeoData.objects.select_related(
+        "visit__disease",
+        "visit__doctor__hospital",
+    ).all()
+    if user is not None:
+        queryset = geodata_visible_to_user(queryset, user)
     queryset = _apply_common_filters(queryset, filters)
     return queryset.order_by("visit__diagnosis_date", "id")[: filters.limit]
 
 
-def active_map_cases_queryset(filters: MapCaseFilters) -> QuerySet:
+def active_map_cases_queryset(filters: MapCaseFilters, *, user=None) -> QuerySet:
     visit_queryset = Visit.objects.all()
-    geodata_queryset = GeoData.objects.select_related("visit__disease").all()
+    geodata_queryset = GeoData.objects.select_related(
+        "visit__disease",
+        "visit__doctor__hospital",
+    ).all()
+    if user is not None:
+        visit_queryset = visits_visible_to_user(visit_queryset, user)
+        geodata_queryset = geodata_visible_to_user(geodata_queryset, user)
     active_geodata = active_geodata_queryset(
         geodata_queryset,
         visit_queryset=visit_queryset,
@@ -145,6 +157,8 @@ def serialize_map_case(geodata: GeoData) -> dict:
         "disease_code": disease.disease_code,
         "disease_name": disease.name,
         "disease_type": disease.type,
+        "doctor_id": visit.doctor_id,
+        "doctor_hospital_id": visit.doctor.hospital_id,
         "diagnosis_date": visit.diagnosis_date.isoformat(),
         "status": visit.status,
         "region_type": geodata.region_type,

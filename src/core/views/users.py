@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.models import Doctor, Hospital, User
-from core.permissions import IsAdminOnly
+from core.permissions import IsAdminOnly, IsAdminOrAuthenticatedReadOnly
 from core.serializers import (
     DoctorMeSerializer,
     DoctorSerializer,
@@ -13,6 +13,7 @@ from core.serializers import (
     UserAccountCreateSerializer,
     UserSerializer,
 )
+from core.services.access_control import doctors_visible_to_user, hospitals_visible_to_user
 from core.services.account_service import approve_user_account
 
 
@@ -60,9 +61,19 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class DoctorViewSet(viewsets.ModelViewSet):
-    queryset = Doctor.objects.all()
+    queryset = Doctor.objects.select_related("user", "hospital").all()
     serializer_class = DoctorSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action == "me":
+            return [IsAuthenticated()]
+        return [IsAdminOrAuthenticatedReadOnly()]
+
+    def get_queryset(self):
+        return doctors_visible_to_user(
+            super().get_queryset(),
+            self.request.user,
+        ).order_by("id")
 
     @action(detail=False, methods=["get", "patch"], url_path="me")
     def me(self, request):
@@ -93,4 +104,10 @@ class DoctorViewSet(viewsets.ModelViewSet):
 class HospitalViewSet(viewsets.ModelViewSet):
     queryset = Hospital.objects.all()
     serializer_class = HospitalSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrAuthenticatedReadOnly]
+
+    def get_queryset(self):
+        return hospitals_visible_to_user(
+            super().get_queryset(),
+            self.request.user,
+        ).order_by("name", "id")

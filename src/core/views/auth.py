@@ -17,6 +17,8 @@ from core.services.email_verification import send_email_verification_code, verif
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    throttle_scope = "auth_register"
+    serializer_class = UserRegistrationSerializer
 
     def post(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
@@ -37,6 +39,7 @@ class RegisterView(APIView):
 
 class RegistrationHospitalListView(APIView):
     permission_classes = [AllowAny]
+    serializer_class = RegistrationHospitalSerializer
 
     def get(self, request):
         hospitals = Hospital.objects.all().order_by("name", "id")
@@ -46,6 +49,8 @@ class RegistrationHospitalListView(APIView):
 
 class VerifyEmailView(APIView):
     permission_classes = [AllowAny]
+    throttle_scope = "email_verify"
+    serializer_class = EmailVerificationSerializer
 
     def post(self, request):
         serializer = EmailVerificationSerializer(data=request.data)
@@ -72,6 +77,8 @@ class VerifyEmailView(APIView):
 
 class ResendEmailVerificationView(APIView):
     permission_classes = [AllowAny]
+    throttle_scope = "email_resend"
+    serializer_class = ResendEmailVerificationSerializer
 
     def post(self, request):
         serializer = ResendEmailVerificationSerializer(data=request.data)
@@ -86,4 +93,5 @@ from ..serializers import CustomTokenObtainPairSerializer
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_scope = "auth_login"
 

@@ -13,8 +13,9 @@ PyJWT==2.10.1
 redis==7.4.0
 sqlparse==0.5.5
 tzdata==2025.3
-numpy
-scikit-learn
-joblib
-hdbscan
-python-dotenv
+numpy==2.4.4
+scikit-learn==1.8.0
+joblib==1.5.3
+hdbscan==0.8.42
+python-dotenv==1.2.2
+drf-spectacular==0.29.0

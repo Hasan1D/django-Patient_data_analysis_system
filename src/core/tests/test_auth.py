@@ -53,6 +53,7 @@ from core.serializers import (
 )
 from core.models import (
     Allergy,
+    AuditLog,
     Disease,
     Doctor,
     EmailVerificationCode,
@@ -99,6 +100,129 @@ class PermissionTests(CoreAPITestCase):
         response = self.client.get(reverse("doctor-list"))
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_doctor_cannot_create_doctor_hospital_or_disease_records(self):
+        self.client.force_authenticate(user=self.doctor_user)
+
+        doctor_response = self.client.post(
+            reverse("doctor-list"),
+            {
+                "user": self.second_doctor_user.id,
+                "specialization": "Neurology",
+                "hospital": self.hospital.id,
+            },
+        )
+        hospital_response = self.client.post(
+            reverse("hospital-list"),
+            {
+                "name": "Private Hospital",
+                "hospital_lat": 33.5,
+                "hospital_long": 36.3,
+                "location": "Center",
+                "city": "Damascus",
+            },
+        )
+        disease_response = self.client.post(
+            reverse("disease-list"),
+            {
+                "disease_code": "NEW",
+                "name": "New Disease",
+                "type": "viral",
+                "transmission_vector": "airborne",
+                "symptoms": "fever",
+                "risk_level": 2,
+                "infection_score": 0.5,
+            },
+        )
+
+        self.assertEqual(doctor_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(hospital_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(disease_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_doctor_lists_are_limited_to_own_hospital_scope(self):
+        other_hospital = Hospital.objects.create(
+            name="Other Hospital",
+            hospital_lat=34.51,
+            hospital_long=37.29,
+            location="Other",
+            city="Homs",
+        )
+        other_user = User.objects.create_user(
+            username="other-doctor",
+            password="secret123",
+            real_name="Other Doctor",
+            phon_number="0009",
+            role=User.ROLE_DOCTOR,
+            email_verified=True,
+            admin_approved=True,
+        )
+        other_doctor = Doctor.objects.create(
+            user=other_user,
+            specialization="Surgery",
+            hospital=other_hospital,
+        )
+        self.client.force_authenticate(user=self.doctor_user)
+
+        doctors_response = self.client.get(reverse("doctor-list"))
+        hospitals_response = self.client.get(reverse("hospital-list"))
+
+        self.assertEqual(doctors_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(hospitals_response.status_code, status.HTTP_200_OK)
+        self.assertNotIn(other_doctor.id, [doctor["id"] for doctor in doctors_response.json()])
+        self.assertEqual(
+            [hospital["id"] for hospital in hospitals_response.json()],
+            [self.hospital.id],
+        )
+
+    def test_doctor_cannot_retrieve_visit_from_another_hospital(self):
+        other_hospital = Hospital.objects.create(
+            name="Outside Hospital",
+            hospital_lat=34.51,
+            hospital_long=37.29,
+            location="Outside",
+            city="Homs",
+        )
+        other_user = User.objects.create_user(
+            username="outside-doctor",
+            password="secret123",
+            real_name="Outside Doctor",
+            phon_number="0010",
+            role=User.ROLE_DOCTOR,
+            email_verified=True,
+            admin_approved=True,
+        )
+        other_doctor = Doctor.objects.create(
+            user=other_user,
+            specialization="Surgery",
+            hospital=other_hospital,
+        )
+        outside_visit = Visit.objects.create(
+            patient=self.patient_one,
+            doctor=other_doctor,
+            disease=self.disease_a,
+            diagnosis_date=date(2026, 4, 25),
+            status="infected",
+            weight=70,
+            height=175,
+            marital_status="single",
+        )
+        self.client.force_authenticate(user=self.doctor_user)
+
+        response = self.client.get(reverse("visit-detail", args=[outside_visit.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_api_requests_are_audited(self):
+        self.client.force_authenticate(user=self.doctor_user)
+
+        response = self.client.get(reverse("doctor-me"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        audit_log = AuditLog.objects.latest("id")
+        self.assertEqual(audit_log.user_id, self.doctor_user.id)
+        self.assertEqual(audit_log.method, "GET")
+        self.assertEqual(audit_log.path, reverse("doctor-me"))
+        self.assertEqual(audit_log.status_code, status.HTTP_200_OK)
 
     def test_doctor_can_view_own_profile(self):
         self.client.force_authenticate(user=self.doctor_user)

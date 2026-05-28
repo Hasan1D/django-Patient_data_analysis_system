@@ -7,10 +7,14 @@ from ..models import SupportTicket, SupportMessage, User
 from ..serializers import SupportTicketSerializer, SupportMessageSerializer
 
 class SupportTicketViewSet(viewsets.ModelViewSet):
+    queryset = SupportTicket.objects.none()
     serializer_class = SupportTicketSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return SupportTicket.objects.none()
+
         user = self.request.user
         if user.role == User.ROLE_ADMIN or user.is_staff:
             return SupportTicket.objects.all().order_by('-created_at')

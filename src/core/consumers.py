@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
-from core.models import User
+from core.models import Doctor, User
 from core.services.map_cases import (
     MAP_ACTIVE_ALL_GROUP,
     disease_group_name,
@@ -23,10 +23,12 @@ class ActiveCasesMapConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         query_params = parse_qs(self.scope["query_string"].decode())
         token = self._first_query_value(query_params, "token")
-        user = await self._get_user_for_token(token)
-        if user is None:
+        access = await self._get_access_for_token(token)
+        if access is None:
             await self.close(code=4401)
             return
+        self.user_role = access["role"]
+        self.hospital_id = access["hospital_id"]
 
         self.disease_code = normalize_disease_code(
             self._first_query_value(query_params, "disease_code")
@@ -94,6 +96,8 @@ class ActiveCasesMapConsumer(AsyncJsonWebsocketConsumer):
         return date.fromisoformat(value)
 
     def _case_matches_filters(self, case):
+        if self.user_role == User.ROLE_DOCTOR and case.get("doctor_hospital_id") != self.hospital_id:
+            return False
         if self.disease_code and case.get("disease_code") != self.disease_code:
             return False
         if self.disease_type and case.get("disease_type") != self.disease_type:
@@ -109,7 +113,7 @@ class ActiveCasesMapConsumer(AsyncJsonWebsocketConsumer):
         return True
 
     @database_sync_to_async
-    def _get_user_for_token(self, token):
+    def _get_access_for_token(self, token):
         if not token:
             return None
         try:
@@ -126,4 +130,18 @@ class ActiveCasesMapConsumer(AsyncJsonWebsocketConsumer):
 
         if user.role not in (User.ROLE_DOCTOR, User.ROLE_ADMIN):
             return None
-        return user
+        hospital_id = None
+        if user.role == User.ROLE_DOCTOR:
+            hospital_id = (
+                Doctor.objects.filter(user=user)
+                .values_list("hospital_id", flat=True)
+                .first()
+            )
+            if hospital_id is None:
+                return None
+
+        return {
+            "id": user.id,
+            "role": user.role,
+            "hospital_id": hospital_id,
+        }

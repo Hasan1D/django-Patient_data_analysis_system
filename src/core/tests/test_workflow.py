@@ -133,6 +133,13 @@ class PatientWorkflowTests(CoreAPITestCase):
         self.assertIsNone(patient.work_lat)
         self.assertIsNone(patient.work_long)
 
+    def test_patient_list_supports_opt_in_pagination(self):
+        response = self.client.get(reverse("patient-list"), {"page": 1, "page_size": 1})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", response.json())
+        self.assertEqual(len(response.json()["results"]), 1)
+
     def test_create_visit_from_patient_endpoint_links_patient_and_creates_geodata(self):
         response = self.client.post(
             reverse("patient-visits", args=[self.patient_one.id]),
@@ -192,7 +199,7 @@ class PatientWorkflowTests(CoreAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("disease_code", response.json())
 
-    def test_doctor_user_without_doctor_record_cannot_create_patient_visit(self):
+    def test_doctor_user_without_doctor_record_cannot_access_patient_visit_workflow(self):
         doctor_without_record = User.objects.create_user(
             username="doctor-without-record",
             password="secret123",
@@ -207,8 +214,7 @@ class PatientWorkflowTests(CoreAPITestCase):
             self._visit_payload(),
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("doctor", response.json())
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_admin_creates_patient_visit_with_explicit_doctor_id(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -383,6 +389,30 @@ class SerializerTests(CoreAPITestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn("gender", serializer.errors)
 
+    def test_patient_serializer_rejects_future_birth_date_and_partial_coordinates(self):
+        future_birth_date_serializer = PatientSerializer(
+            data={
+                "national_number": "9001",
+                "name": "Future Patient",
+                "birth_date": "2999-01-01",
+                "gender": "female",
+            }
+        )
+        partial_coordinates_serializer = PatientSerializer(
+            data={
+                "national_number": "9002",
+                "name": "Partial Coordinates Patient",
+                "birth_date": "1990-01-01",
+                "gender": "male",
+                "residence_lat": 33.50,
+            }
+        )
+
+        self.assertFalse(future_birth_date_serializer.is_valid())
+        self.assertIn("birth_date", future_birth_date_serializer.errors)
+        self.assertFalse(partial_coordinates_serializer.is_valid())
+        self.assertIn("residence_lat", partial_coordinates_serializer.errors)
+
     def test_visit_serializer_rejects_status_outside_infected_or_cured(self):
         serializer = VisitSerializer(
             data={
@@ -399,6 +429,37 @@ class SerializerTests(CoreAPITestCase):
 
         self.assertFalse(serializer.is_valid())
         self.assertIn("status", serializer.errors)
+
+    def test_visit_serializer_rejects_invalid_measurements_and_birth_date_order(self):
+        invalid_measurement_serializer = VisitSerializer(
+            data={
+                "patient": self.patient_one.id,
+                "doctor": self.doctor.id,
+                "disease": self.disease_a.id,
+                "diagnosis_date": "2026-04-12",
+                "status": "infected",
+                "weight": -1,
+                "height": 175,
+                "marital_status": "single",
+            }
+        )
+        before_birth_serializer = VisitSerializer(
+            data={
+                "patient": self.patient_one.id,
+                "doctor": self.doctor.id,
+                "disease": self.disease_a.id,
+                "diagnosis_date": "1980-04-12",
+                "status": "infected",
+                "weight": 70,
+                "height": 175,
+                "marital_status": "single",
+            }
+        )
+
+        self.assertFalse(invalid_measurement_serializer.is_valid())
+        self.assertIn("weight", invalid_measurement_serializer.errors)
+        self.assertFalse(before_birth_serializer.is_valid())
+        self.assertIn("diagnosis_date", before_birth_serializer.errors)
 
     def test_visit_serializer_rejects_marital_status_outside_allowed_choices(self):
         serializer = VisitSerializer(
@@ -462,6 +523,20 @@ class SerializerTests(CoreAPITestCase):
         )
         self.assertFalse(invalid_serializer.is_valid())
         self.assertIn("infection_score", invalid_serializer.errors)
+
+        invalid_risk_serializer = DiseaseSerializer(
+            data={
+                "disease_code": "risk",
+                "name": "Risk Disease",
+                "type": "viral",
+                "transmission_vector": "airborne",
+                "symptoms": "fever",
+                "risk_level": 6,
+                "infection_score": 0.5,
+            }
+        )
+        self.assertFalse(invalid_risk_serializer.is_valid())
+        self.assertIn("risk_level", invalid_risk_serializer.errors)
 
     def test_report_serializer_validates_dates_and_trigger_visit_disease(self):
         report = Report(
@@ -537,6 +612,20 @@ class SerializerTests(CoreAPITestCase):
 
         self.assertFalse(serializer.is_valid())
         self.assertIn("region_type", serializer.errors)
+
+    def test_geodata_serializer_rejects_invalid_coordinates(self):
+        serializer = GeoDataSerializer(
+            data={
+                "patient": self.patient_one.id,
+                "visit": self.visit_a1.id,
+                "latitude": 91.0,
+                "longitude": 36.2500,
+                "region_type": "home",
+            }
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("latitude", serializer.errors)
 
     def test_medical_history_serializer_allows_only_one_history_per_patient(self):
         serializer = MedicalHistorySerializer(

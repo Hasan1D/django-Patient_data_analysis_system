@@ -17,6 +17,7 @@ from core.serializers import (
     VaccineSerializer,
     VisitSerializer,
 )
+from core.services.access_control import patients_visible_to_user, visits_visible_to_user
 from core.services.workflow_service import (
     create_allergy_for_patient,
     create_chronic_disease_for_patient,
@@ -31,17 +32,26 @@ class PatientViewSet(viewsets.ModelViewSet):
     serializer_class = PatientSerializer
     permission_classes = [IsDoctorOrAdmin]
 
+    def get_queryset(self):
+        return patients_visible_to_user(
+            super().get_queryset(),
+            self.request.user,
+        ).order_by("id")
+
     @action(detail=True, methods=["get", "post"], url_path="visits")
     def visits(self, request, pk=None):
         patient = self.get_object()
 
         if request.method == "GET":
             visits = (
-                Visit.objects.select_related(
-                    "patient",
-                    "doctor__user",
-                    "doctor__hospital",
-                    "disease",
+                visits_visible_to_user(
+                    Visit.objects.select_related(
+                        "patient",
+                        "doctor__user",
+                        "doctor__hospital",
+                        "disease",
+                    ),
+                    request.user,
                 )
                 .filter(patient=patient)
                 .order_by("-diagnosis_date", "-id")
@@ -51,7 +61,7 @@ class PatientViewSet(viewsets.ModelViewSet):
 
         serializer = PatientVisitCreateSerializer(
             data=request.data,
-            context={"request": request},
+            context={"request": request, "patient": patient},
         )
         serializer.is_valid(raise_exception=True)
 

@@ -28,17 +28,19 @@ def _validated_filters(request) -> MapCaseFilters:
 
 class HistoricalMapCasesView(APIView):
     permission_classes = [IsDoctorOrAdmin]
+    serializer_class = MapCasesQuerySerializer
 
     def get(self, request):
         filters = _validated_filters(request)
-        geodata_records = historical_map_cases_queryset(filters)
+        geodata_records = historical_map_cases_queryset(filters, user=request.user)
         return Response(map_cases_to_feature_collection(geodata_records))
 
 
 class ActiveMapCasesView(APIView):
     permission_classes = [IsDoctorOrAdmin]
+    serializer_class = MapCasesQuerySerializer
 
     def get(self, request):
         filters = _validated_filters(request)
-        geodata_records = active_map_cases_queryset(filters)
+        geodata_records = active_map_cases_queryset(filters, user=request.user)
         return Response(map_cases_to_feature_collection(geodata_records))

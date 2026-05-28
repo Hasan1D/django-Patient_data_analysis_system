@@ -1,8 +1,10 @@
 from datetime import date
 
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 # Create your models here.
@@ -28,6 +30,11 @@ class User(AbstractUser) :
             models.CheckConstraint(
                 condition=models.Q(role__in=["admin", "doctor"]),
                 name="core_user_role_admin_or_doctor",
+            ),
+            models.UniqueConstraint(
+                Lower("email"),
+                condition=~models.Q(email=""),
+                name="core_user_unique_email_ci_not_blank",
             ),
         ]
     
@@ -57,10 +64,26 @@ class EmailVerificationCode(models.Model):
 
 class Hospital(models.Model):
     name = models.CharField(max_length=255)
-    hospital_lat = models.FloatField()
-    hospital_long = models.FloatField()
+    hospital_lat = models.FloatField(
+        validators=[MinValueValidator(-90), MaxValueValidator(90)],
+    )
+    hospital_long = models.FloatField(
+        validators=[MinValueValidator(-180), MaxValueValidator(180)],
+    )
     location = models.CharField(max_length=100)
     city = models.CharField(max_length=100)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(hospital_lat__gte=-90, hospital_lat__lte=90),
+                name="core_hospital_lat_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(hospital_long__gte=-180, hospital_long__lte=180),
+                name="core_hospital_long_valid",
+            ),
+        ]
     
     
     def __str__(self):
@@ -91,16 +114,60 @@ class Patient(models.Model):
     name = models.CharField(max_length=255)
     birth_date = models.DateField()
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
-    residence_lat = models.FloatField(null=True, blank=True)    
-    residence_long = models.FloatField(null=True, blank=True)    
-    work_lat = models.FloatField(null=True, blank=True)    
-    work_long = models.FloatField(null=True, blank=True)
+    residence_lat = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(-90), MaxValueValidator(90)],
+    )
+    residence_long = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(-180), MaxValueValidator(180)],
+    )
+    work_lat = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(-90), MaxValueValidator(90)],
+    )
+    work_long = models.FloatField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(-180), MaxValueValidator(180)],
+    )
 
     class Meta:
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(gender__in=["male", "female"]),
                 name="core_patient_gender_male_or_female",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(residence_lat__isnull=True)
+                    | models.Q(residence_lat__gte=-90, residence_lat__lte=90)
+                ),
+                name="core_patient_residence_lat_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(residence_long__isnull=True)
+                    | models.Q(residence_long__gte=-180, residence_long__lte=180)
+                ),
+                name="core_patient_residence_long_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(work_lat__isnull=True)
+                    | models.Q(work_lat__gte=-90, work_lat__lte=90)
+                ),
+                name="core_patient_work_lat_valid",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(work_long__isnull=True)
+                    | models.Q(work_long__gte=-180, work_long__lte=180)
+                ),
+                name="core_patient_work_long_valid",
             ),
         ]
     
@@ -125,8 +192,10 @@ class Disease(models.Model):
     type = models.CharField(max_length=100)       
     transmission_vector = models.CharField(max_length=100)
     symptoms = models.TextField()
-    risk_level = models.IntegerField()
-    infection_score = models.FloatField()
+    risk_level = models.IntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(5)],
+    )
+    infection_score = models.FloatField(validators=[MinValueValidator(0)])
     source_record_id = models.PositiveIntegerField(null=True, blank=True)
     source_name = models.CharField(max_length=100, blank=True, default="")
     is_reference = models.BooleanField(default=False)
@@ -140,6 +209,16 @@ class Disease(models.Model):
 
     class Meta:
         ordering = ("name",)
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(risk_level__gte=0, risk_level__lte=5),
+                name="core_disease_risk_level_0_5",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(infection_score__gte=0),
+                name="core_disease_infection_score_non_negative",
+            ),
+        ]
     
     
     def __str__(self):
@@ -171,8 +250,12 @@ class Visit(models.Model):
     diagnose = models.TextField(blank=True, default="")
     diagnosis_date = models.DateField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
-    weight = models.FloatField()   
-    height = models.FloatField()  
+    weight = models.FloatField(
+        validators=[MinValueValidator(0.1), MaxValueValidator(500)],
+    )
+    height = models.FloatField(
+        validators=[MinValueValidator(30), MaxValueValidator(250)],
+    )
     marital_status = models.CharField(max_length=20, choices=MARITAL_STATUS_CHOICES)
 
     class Meta:
@@ -184,6 +267,14 @@ class Visit(models.Model):
             models.CheckConstraint(
                 condition=models.Q(marital_status__in=["divorced", "single", "married", "widow"]),
                 name="core_visit_marital_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(weight__gt=0, weight__lte=500),
+                name="core_visit_weight_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(height__gte=30, height__lte=250),
+                name="core_visit_height_valid",
             ),
         ]
      
@@ -203,8 +294,12 @@ class GeoData(models.Model):
 
     patient = models.ForeignKey(Patient , on_delete=models.CASCADE)
     visit = models.ForeignKey(Visit , on_delete=models.CASCADE)
-    latitude = models.FloatField()
-    longitude = models.FloatField()
+    latitude = models.FloatField(
+        validators=[MinValueValidator(-90), MaxValueValidator(90)],
+    )
+    longitude = models.FloatField(
+        validators=[MinValueValidator(-180), MaxValueValidator(180)],
+    )
     region_type = models.CharField(max_length=20, choices=REGION_TYPE_CHOICES)
 
     class Meta:
@@ -212,6 +307,14 @@ class GeoData(models.Model):
             models.CheckConstraint(
                 condition=models.Q(region_type__in=["home", "work"]),
                 name="core_geodata_region_type_home_or_work",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(latitude__gte=-90, latitude__lte=90),
+                name="core_geodata_latitude_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(longitude__gte=-180, longitude__lte=180),
+                name="core_geodata_longitude_valid",
             ),
         ]
     
@@ -231,13 +334,43 @@ class GeoData(models.Model):
     
     
 class GeoCluster(models.Model):
-    center_lat = models.FloatField()
-    center_long = models.FloatField()
-    radius = models.FloatField()
+    center_lat = models.FloatField(
+        validators=[MinValueValidator(-90), MaxValueValidator(90)],
+    )
+    center_long = models.FloatField(
+        validators=[MinValueValidator(-180), MaxValueValidator(180)],
+    )
+    radius = models.FloatField(validators=[MinValueValidator(0)])
     disease = models.ForeignKey(Disease , on_delete=models.CASCADE)
-    case_count = models.IntegerField()
-    risk_level = models.IntegerField()
+    case_count = models.IntegerField(validators=[MinValueValidator(0)])
+    risk_level = models.IntegerField(
+        validators=[MinValueValidator(0), MaxValueValidator(5)],
+    )
     generated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(center_lat__gte=-90, center_lat__lte=90),
+                name="core_geocluster_center_lat_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(center_long__gte=-180, center_long__lte=180),
+                name="core_geocluster_center_long_valid",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(radius__gte=0),
+                name="core_geocluster_radius_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(case_count__gte=0),
+                name="core_geocluster_case_count_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(risk_level__gte=0, risk_level__lte=5),
+                name="core_geocluster_risk_level_0_5",
+            ),
+        ]
     
     
     def __str__(self):
@@ -396,4 +529,33 @@ class SupportMessage(models.Model):
 
     def __str__(self):
         return f"Message by {self.user.username} on ticket {self.ticket.id}"
+
+
+class AuditLog(models.Model):
+    user = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="audit_logs",
+    )
+    username = models.CharField(max_length=150, blank=True, default="")
+    method = models.CharField(max_length=10)
+    path = models.CharField(max_length=512)
+    status_code = models.PositiveSmallIntegerField()
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        indexes = [
+            models.Index(fields=("created_at",)),
+            models.Index(fields=("user", "created_at")),
+            models.Index(fields=("method", "path")),
+        ]
+
+    def __str__(self):
+        actor = self.username or "anonymous"
+        return f"{actor} {self.method} {self.path} -> {self.status_code}"
 
