@@ -290,6 +290,7 @@ AUDIT_LOG_ENABLED = _env_bool("DJANGO_AUDIT_LOG_ENABLED", True)
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+TEST_RUNNER = 'core.test_runner.CoreDiscoverRunner'
 
 
 # ربط ال اليوزر بال جانغو
