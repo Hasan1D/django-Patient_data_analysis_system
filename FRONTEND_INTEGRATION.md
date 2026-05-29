@@ -108,6 +108,25 @@ GET /api/patients/{id}/visits/
 Each visit includes `doctor_info` with the doctor's name, username,
 specialization, hospital id, and hospital name.
 
+Admin patient creation:
+
+```http
+POST /api/patients/admin-create/
+Authorization: Bearer ADMIN_ACCESS_TOKEN
+Content-Type: application/json
+
+{
+  "national_number": "P-1001",
+  "name": "Patient Name",
+  "birth_date": "1990-01-01",
+  "gender": "female",
+  "residence_lat": 33.51,
+  "residence_long": 36.29,
+  "work_lat": 33.52,
+  "work_long": 36.30
+}
+```
+
 Current doctor profile:
 
 ```http

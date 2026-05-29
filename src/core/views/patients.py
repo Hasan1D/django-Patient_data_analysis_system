@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.models import Patient, Visit
-from core.permissions import IsDoctorOrAdmin
+from core.permissions import IsAdminOnly, IsDoctorOrAdmin
 from core.serializers import (
     AllergySerializer,
     ChronicDiseaseSerializer,
@@ -37,6 +37,21 @@ class PatientViewSet(viewsets.ModelViewSet):
             super().get_queryset(),
             self.request.user,
         ).order_by("id")
+
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[IsAdminOnly],
+        url_path="admin-create",
+    )
+    def admin_create(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        patient = serializer.save()
+        return Response(
+            self.get_serializer(patient).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=["get", "post"], url_path="visits")
     def visits(self, request, pk=None):

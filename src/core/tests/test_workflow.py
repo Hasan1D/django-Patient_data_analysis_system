@@ -133,6 +133,40 @@ class PatientWorkflowTests(CoreAPITestCase):
         self.assertIsNone(patient.work_lat)
         self.assertIsNone(patient.work_long)
 
+    def test_admin_create_patient_endpoint_creates_patient(self):
+        self.client.force_authenticate(user=self.admin_user)
+
+        response = self.client.post(
+            reverse("patient-admin-create"),
+            {
+                "national_number": "ADM-1001",
+                "name": "Admin Created Patient",
+                "birth_date": "1993-08-20",
+                "gender": "female",
+                "residence_lat": 33.6100,
+                "residence_long": 36.4100,
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        patient = Patient.objects.get(id=response.json()["id"])
+        self.assertEqual(patient.national_number, "ADM-1001")
+        self.assertTrue(MedicalHistory.objects.filter(patient=patient).exists())
+
+    def test_doctor_cannot_use_admin_create_patient_endpoint(self):
+        response = self.client.post(
+            reverse("patient-admin-create"),
+            {
+                "national_number": "ADM-1002",
+                "name": "Doctor Blocked Patient",
+                "birth_date": "1993-08-20",
+                "gender": "female",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Patient.objects.filter(national_number="ADM-1002").exists())
+
     def test_patient_list_supports_opt_in_pagination(self):
         response = self.client.get(reverse("patient-list"), {"page": 1, "page_size": 1})
 
