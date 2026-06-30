@@ -9,7 +9,7 @@ class SupportMessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SupportMessage
-        fields = ["id", "ticket", "user", "user_name", "user_role", "message", "created_at"]
+        fields = ["id", "ticket", "user", "user_name", "user_role", "message", "status", "created_at"]
         read_only_fields = ["ticket", "user", "created_at"]
 
 

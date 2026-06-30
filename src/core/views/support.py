@@ -102,3 +102,12 @@ class SupportTicketViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(ticket)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['patch'])
+    def mark_read(self, request, pk=None):
+        ticket = self.get_object()
+        # تحديث حالة رسائل الطرف الآخر إلى "مقروءة" (read)
+        unread_messages = ticket.messages.exclude(user=request.user).exclude(status='read')
+        updated_count = unread_messages.update(status='read')
+        
+        return Response({'status': 'success', 'updated_count': updated_count}, status=status.HTTP_200_OK)

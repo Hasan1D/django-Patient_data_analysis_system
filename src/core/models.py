@@ -522,9 +522,19 @@ class SupportTicket(models.Model):
 
 
 class SupportMessage(models.Model):
+    STATUS_SENT = 'sent'
+    STATUS_DELIVERED = 'delivered'
+    STATUS_READ = 'read'
+    STATUS_CHOICES = [
+        (STATUS_SENT, 'تم الإرسال'),
+        (STATUS_DELIVERED, 'تم الاستلام'),
+        (STATUS_READ, 'تمت القراءة'),
+    ]
+
     ticket = models.ForeignKey(SupportTicket, on_delete=models.CASCADE, related_name='messages')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='support_messages')
     message = models.TextField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_SENT) # الحقل الجديد
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
