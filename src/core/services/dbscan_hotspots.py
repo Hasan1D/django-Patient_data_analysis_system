@@ -7,7 +7,8 @@ from django.utils import timezone
 
 from core.models import Disease, GeoCluster, GeoData, Visit
 
-from .active_cases import active_geodata_queryset, one_geodata_per_visit_queryset
+from .active_cases import active_geodata_queryset, apply_geodata_point_mode, normalize_point_mode
+from .postgis import filter_geoclusters_within_radius
 from .spatial import distance_km
 
 
@@ -29,6 +30,8 @@ class DBSCANClusterCandidate:
     disease_id: int
     disease_code: str
     point_count: int
+    unique_visit_count: int
+    unique_patient_count: int
     member_geodata_ids: list[int]
     member_visit_ids: list[int]
     center_lat: float
@@ -62,7 +65,9 @@ def _collect_points(
     date_from=None,
     date_to=None,
     region_type: str | None = None,
+    point_mode: str = "exposure",
 ) -> list[DBSCANPoint]:
+    normalized_point_mode = normalize_point_mode(point_mode)
     resolved_date_from, resolved_date_to = _resolve_date_window(
         disease_id=disease_id,
         lookback_days=lookback_days,
@@ -81,10 +86,11 @@ def _collect_points(
     queryset = active_geodata_queryset(
         GeoData.objects.select_related("visit__disease", "patient").all(),
         visit_queryset=visits,
+        constrain_latest_to_queryset=False,
     )
     if region_type:
         queryset = queryset.filter(region_type=region_type)
-    queryset = one_geodata_per_visit_queryset(queryset)
+    queryset = apply_geodata_point_mode(queryset, point_mode=normalized_point_mode)
 
     queryset = queryset.order_by("visit__diagnosis_date", "id")
 
@@ -149,6 +155,8 @@ def _build_cluster_candidate(*, disease: Disease, points: list[DBSCANPoint]) -> 
         disease_id=disease.id,
         disease_code=disease.disease_code,
         point_count=len(points),
+        unique_visit_count=len({point.visit_id for point in points}),
+        unique_patient_count=len({point.patient_id for point in points}),
         member_geodata_ids=sorted({point.geodata_id for point in points}),
         member_visit_ids=sorted({point.visit_id for point in points}),
         center_lat=round(center_lat, 6),
@@ -170,11 +178,13 @@ def detect_dbscan_clusters(
     region_type: str | None = None,
     eps_km: float = 3.0,
     min_samples: int = 2,
+    point_mode: str = "exposure",
 ) -> list[DBSCANClusterCandidate]:
     if eps_km <= 0:
         raise ValueError("eps_km must be greater than zero.")
     if min_samples < 2:
         raise ValueError("min_samples must be at least 2.")
+    normalized_point_mode = normalize_point_mode(point_mode)
 
     points = _collect_points(
         disease_id=disease_id,
@@ -182,6 +192,7 @@ def detect_dbscan_clusters(
         date_from=date_from,
         date_to=date_to,
         region_type=region_type,
+        point_mode=normalized_point_mode,
     )
     if not points:
         return []
@@ -243,6 +254,12 @@ def _find_existing_dbscan_cluster(*, candidate: DBSCANClusterCandidate) -> GeoCl
         disease_id=candidate.disease_id,
         generated_at__gte=timezone.now() - timedelta(days=30),
     ).order_by("-generated_at")
+    recent_clusters = filter_geoclusters_within_radius(
+        recent_clusters,
+        latitude=candidate.center_lat,
+        longitude=candidate.center_long,
+        radius_km=max(candidate.radius_km, 3.0),
+    )
 
     for cluster in recent_clusters:
         threshold_radius = max(cluster.radius, candidate.radius_km, 3.0)
@@ -268,7 +285,7 @@ def persist_dbscan_clusters(*, clusters: Iterable[DBSCANClusterCandidate]) -> li
                 center_long=candidate.center_long,
                 radius=candidate.radius_km,
                 disease_id=candidate.disease_id,
-                case_count=candidate.point_count,
+                case_count=candidate.unique_visit_count,
                 risk_level=candidate.risk_level,
             )
             persisted_ids.append(cluster.id)
@@ -277,7 +294,7 @@ def persist_dbscan_clusters(*, clusters: Iterable[DBSCANClusterCandidate]) -> li
         existing_cluster.center_lat = round((existing_cluster.center_lat + candidate.center_lat) / 2, 6)
         existing_cluster.center_long = round((existing_cluster.center_long + candidate.center_long) / 2, 6)
         existing_cluster.radius = round(max(existing_cluster.radius, candidate.radius_km, 0.1), 4)
-        existing_cluster.case_count = max(existing_cluster.case_count, candidate.point_count)
+        existing_cluster.case_count = max(existing_cluster.case_count, candidate.unique_visit_count)
         existing_cluster.risk_level = max(existing_cluster.risk_level, candidate.risk_level)
         existing_cluster.save()
         persisted_ids.append(existing_cluster.id)

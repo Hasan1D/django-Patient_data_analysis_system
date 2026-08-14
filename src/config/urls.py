@@ -14,19 +14,28 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+import importlib.util
+
 from django.contrib import admin
 from django.urls import path , include
 from rest_framework.routers import DefaultRouter
 from core.views import (
+    RegisterView,
+    RegistrationHospitalListView,
+    ActiveMapCasesView,
+    HistoricalMapCasesView,
     PatientViewSet , UserViewSet , DoctorViewSet , HospitalViewSet ,
     DiseaseViewSet ,VisitViewSet , GeoDataViewSet , 
-    GeoClusterViewSet , ReportViewSet , LabTestViewSet )
-
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
+    GeoClusterViewSet , ReportViewSet , LabTestViewSet,
+    SupportTicketViewSet,
+    ResendEmailVerificationView,
+    VerifyEmailView,
 )
 
+from rest_framework_simplejwt.views import (
+    TokenRefreshView,
+)
+from core.views.auth import CustomTokenObtainPairView
 
 router = DefaultRouter()
 router.register(r'patients' , PatientViewSet)
@@ -39,6 +48,8 @@ router.register(r'geodata' , GeoDataViewSet)
 router.register(r'geoclusters' , GeoClusterViewSet)
 router.register(r'reports', ReportViewSet)
 router.register(r'lab-tests', LabTestViewSet)
+router.register(r'support', SupportTicketViewSet, basename='supportticket')
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -46,6 +57,24 @@ urlpatterns = [
 ]
 
 urlpatterns += [
-    path('api/token/' , TokenObtainPairView.as_view() , name='token_obtion_pair'),
+    path('api/auth/register/' , RegisterView.as_view() , name='auth-register'),
+    path('api/auth/registration-hospitals/' , RegistrationHospitalListView.as_view() , name='auth-registration-hospitals'),
+    path('api/auth/verify-email/' , VerifyEmailView.as_view() , name='auth-verify-email'),
+    path('api/auth/resend-verification/' , ResendEmailVerificationView.as_view() , name='auth-resend-verification'),
+    path('api/maps/cases/' , HistoricalMapCasesView.as_view() , name='map-cases'),
+    path('api/maps/active-cases/' , ActiveMapCasesView.as_view() , name='map-active-cases'),
+    path('api/token/' , CustomTokenObtainPairView.as_view() , name='token_obtion_pair'),
     path('api/token/refresh/' , TokenRefreshView.as_view() , name='token_refresh'),
 ]
+
+if importlib.util.find_spec("drf_spectacular") is not None:
+    from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+
+    urlpatterns += [
+        path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+        path(
+            "api/docs/",
+            SpectacularSwaggerView.as_view(url_name="schema"),
+            name="swagger-ui",
+        ),
+    ]

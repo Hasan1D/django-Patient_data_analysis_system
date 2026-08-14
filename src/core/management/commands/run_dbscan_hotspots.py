@@ -17,6 +17,12 @@ class Command(BaseCommand):
         parser.add_argument("--date-from", help="Optional YYYY-MM-DD lower diagnosis date bound.")
         parser.add_argument("--date-to", help="Optional YYYY-MM-DD upper diagnosis date bound.")
         parser.add_argument("--region-type", help="Optional region_type filter.")
+        parser.add_argument(
+            "--point-mode",
+            choices=("exposure", "case"),
+            default="exposure",
+            help="exposure uses all active home/work points; case uses one point per visit.",
+        )
         parser.add_argument("--eps-km", type=float, default=3.0, help="Neighborhood radius in kilometers.")
         parser.add_argument("--min-samples", type=int, default=2, help="Minimum nearby points required to form a cluster.")
         parser.add_argument(
@@ -41,6 +47,7 @@ class Command(BaseCommand):
             region_type=options.get("region_type"),
             eps_km=options.get("eps_km"),
             min_samples=options.get("min_samples"),
+            point_mode=options.get("point_mode"),
         )
 
         persisted_ids: list[int] = []

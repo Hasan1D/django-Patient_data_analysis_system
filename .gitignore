@@ -29,5 +29,8 @@ Thumbs.db
 
 *.sqlite3
 *.sqlite3-journal
-
-docs/
+# Local project artifacts
+/docs/
+/src/db.sqlite3
+/src/dp.sqlite3
+/src/backup_data.json

@@ -1,11 +1,28 @@
 from datetime import timedelta
 
-from core.models import Visit
+from core.models import Disease, Visit
 
 from .active_cases import is_active_visit_in_queryset
 from .contracts import AlertLevel, DiseaseAlertPolicy, OutbreakAnalysis, TrendSnapshot, VisitOutbreakContext
+from .ml.features import FEATURE_SCHEMA_VERSION, build_outbreak_feature_map
+from .ml.random_forest import predict_alert_level as predict_random_forest_alert_level
 from .spatial import find_nearby_cases
 from .trend import build_trend_snapshot
+
+
+ALERT_LEVEL_PRIORITY = {
+    "no_alert": 0,
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+    "critical": 4,
+}
+ML_CONFIDENCE_THRESHOLD = 0.65
+ML_ALERT_SCORE_FLOORS = {
+    "medium": 35.0,
+    "high": 55.0,
+    "critical": 80.0,
+}
 
 
 def _build_time_windows(
@@ -149,6 +166,75 @@ def _build_reasons(
     return reasons
 
 
+def _merge_ml_alert_level(
+    *,
+    disease: Disease,
+    trend: TrendSnapshot,
+    nearby_case_count: int,
+    total_local_cases: int,
+    rule_based_score: float,
+    rule_based_alert_level: AlertLevel,
+) -> tuple[AlertLevel, float, dict[str, object], str | None]:
+    features = build_outbreak_feature_map(
+        disease=disease,
+        nearby_case_count=nearby_case_count,
+        local_case_count=total_local_cases,
+        trend=trend,
+        rule_based_risk_score=rule_based_score,
+    )
+    metadata: dict[str, object] = {
+        "rule_based_alert_level": rule_based_alert_level,
+        "rule_based_risk_score": rule_based_score,
+        "ml_feature_schema": FEATURE_SCHEMA_VERSION,
+        "final_decision_source": "rule_based",
+    }
+
+    try:
+        prediction = predict_random_forest_alert_level(features=features)
+    except (FileNotFoundError, ImportError, ModuleNotFoundError, ValueError) as exc:
+        metadata.update(
+            {
+                "ml_alert_level": None,
+                "ml_confidence": 0.0,
+                "ml_probabilities": {},
+                "ml_error": str(exc),
+                "final_decision_source": "rule_based_ml_unavailable",
+            }
+        )
+        return rule_based_alert_level, rule_based_score, metadata, None
+
+    metadata.update(
+        {
+            "ml_alert_level": prediction.predicted_alert_level,
+            "ml_confidence": prediction.confidence,
+            "ml_probabilities": prediction.probabilities,
+            "ml_used_features": prediction.used_features,
+        }
+    )
+
+    if prediction.confidence < ML_CONFIDENCE_THRESHOLD:
+        metadata["final_decision_source"] = "rule_based_ml_low_confidence"
+        return rule_based_alert_level, rule_based_score, metadata, None
+
+    rule_priority = ALERT_LEVEL_PRIORITY.get(rule_based_alert_level, 0)
+    ml_priority = ALERT_LEVEL_PRIORITY.get(prediction.predicted_alert_level, 0)
+    if ml_priority <= rule_priority:
+        metadata["final_decision_source"] = "rule_based_ml_not_higher"
+        return rule_based_alert_level, rule_based_score, metadata, None
+
+    raised_alert_level = prediction.predicted_alert_level
+    raised_score = max(
+        rule_based_score,
+        ML_ALERT_SCORE_FLOORS.get(raised_alert_level, rule_based_score),
+    )
+    metadata["final_decision_source"] = "random_forest_raise"
+    reason = (
+        f"Random forest raised alert level to {raised_alert_level} "
+        f"with confidence {prediction.confidence}."
+    )
+    return raised_alert_level, round(raised_score, 2), metadata, reason
+
+
 def evaluate_visit_outbreak(
     *,
     context: VisitOutbreakContext,
@@ -258,6 +344,18 @@ def evaluate_visit_outbreak(
         policy=policy,
     )
 
+    disease = Disease.objects.get(id=context.disease_id)
+    alert_level, score, ml_metadata, ml_reason = _merge_ml_alert_level(
+        disease=disease,
+        trend=trend,
+        nearby_case_count=nearby_case_count,
+        total_local_cases=total_local_cases,
+        rule_based_score=score,
+        rule_based_alert_level=alert_level,
+    )
+    if ml_reason:
+        reasons.append(ml_reason)
+
     should_create_report = alert_level in {"medium", "high", "critical"}
     should_create_cluster = (
         alert_level in {"high", "critical"}
@@ -291,5 +389,6 @@ def evaluate_visit_outbreak(
                 "start": previous_start.isoformat(),
                 "end": previous_end.isoformat(),
             },
+            "ml": ml_metadata,
         },
     )

@@ -10,13 +10,49 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import importlib.util
 import os
+from datetime import timedelta
 from pathlib import Path
-
-from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / ".env")  # يقرأ src/.env تلقائياً
+except ImportError:
+    pass  # python-dotenv غير مثبت، سيعتمد على متغيرات النظام
+
+from django.core.exceptions import ImproperlyConfigured
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_env_file(BASE_DIR.parent / ".env")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_list(name: str, default: tuple[str, ...] = ()) -> list[str]:
+    return [
+        value.strip()
+        for value in os.getenv(name, ",".join(default)).split(",")
+        if value.strip()
+    ]
 
 
 # Quick-start development settings - unsuitable for production
@@ -27,21 +63,32 @@ DEFAULT_DEV_SECRET_KEY = "django-insecure-1u2$!hanb(5pvpg*xi0(eh%)vzgln&m1=_htdm
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", DEFAULT_DEV_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DJANGO_DEBUG", "True").strip().lower() in {"1", "true", "yes", "on"}
+DEBUG = _env_bool("DJANGO_DEBUG", True)
 
 if not DEBUG and SECRET_KEY == DEFAULT_DEV_SECRET_KEY:
     raise ImproperlyConfigured("Set DJANGO_SECRET_KEY when DJANGO_DEBUG is disabled.")
 
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",")
-    if host.strip()
-]
+DEFAULT_ALLOWED_HOSTS = ("localhost", "127.0.0.1", "[::1]") if DEBUG else ()
+ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS)
+
+DEFAULT_FRONTEND_ORIGINS = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+)
+CORS_ALLOW_ALL_ORIGINS = _env_bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", False)
+CORS_ALLOWED_ORIGINS = _env_list("DJANGO_CORS_ALLOWED_ORIGINS", DEFAULT_FRONTEND_ORIGINS)
+CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS", tuple(CORS_ALLOWED_ORIGINS))
 
 
 # Application definition
+HAS_DRF_SPECTACULAR = importlib.util.find_spec("drf_spectacular") is not None
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -50,14 +97,15 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     
     #my app
+    'channels',
+    'corsheaders',
     'django_filters',
     'rest_framework',
+    *(["drf_spectacular"] if HAS_DRF_SPECTACULAR else []),
     'core' ,
 ]
    
 # هي اضفناها مشان الامان
-from datetime import timedelta
-
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES' : (
         'rest_framework_simplejwt.authentication.JWTAuthentication' ,
@@ -66,6 +114,35 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend'
     ] ,
+    'DEFAULT_PAGINATION_CLASS': 'core.pagination.OptionalPageNumberPagination',
+    'PAGE_SIZE': int(os.getenv("DJANGO_API_PAGE_SIZE", "100")),
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': os.getenv("DJANGO_THROTTLE_ANON", "300/day"),
+        'user': os.getenv("DJANGO_THROTTLE_USER", "2000/day"),
+        'auth_login': os.getenv("DJANGO_THROTTLE_AUTH_LOGIN", "20/minute"),
+        'auth_register': os.getenv("DJANGO_THROTTLE_AUTH_REGISTER", "10/hour"),
+        'email_verify': os.getenv("DJANGO_THROTTLE_EMAIL_VERIFY", "20/hour"),
+        'email_resend': os.getenv("DJANGO_THROTTLE_EMAIL_RESEND", "5/hour"),
+    },
+}
+
+if HAS_DRF_SPECTACULAR:
+    REST_FRAMEWORK['DEFAULT_SCHEMA_CLASS'] = 'drf_spectacular.openapi.AutoSchema'
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Patient Data Analysis API",
+    "DESCRIPTION": "Backend API for patient records, disease surveillance, maps, and alerts.",
+    "VERSION": "1.0.0",
+    "ENUM_NAME_OVERRIDES": {
+        "VisitStatusEnum": "core.models.Visit.STATUS_CHOICES",
+        "ReportStatusEnum": "core.models.Report.STATUS_CHOICES",
+        "SupportTicketStatusEnum": "core.models.SupportTicket.STATUS_CHOICES",
+    },
 }
 
 
@@ -73,9 +150,11 @@ REST_FRAMEWORK = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.AuditLogMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -99,17 +178,56 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
+
+REDIS_URL = os.getenv("REDIS_URL")
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],
+            },
+        },
+    }
+else:
+    if not DEBUG:
+        raise ImproperlyConfigured("Set REDIS_URL when DJANGO_DEBUG is disabled.")
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        },
+    }
 
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+#
+# Local development keeps SQLite by default. Set DJANGO_DATABASE_ENGINE=postgres
+# and the POSTGRES_* variables below to run on PostgreSQL with PostGIS enabled.
+DATABASE_ENGINE = os.getenv("DJANGO_DATABASE_ENGINE", "sqlite").strip().lower()
+if DATABASE_ENGINE in {"postgres", "postgresql", "postgis"}:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.getenv("POSTGRES_DB", "dis_sys"),
+            "USER": os.getenv("POSTGRES_USER", "postgres"),
+            "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
+            "HOST": os.getenv("POSTGRES_HOST", "localhost"),
+            "PORT": os.getenv("POSTGRES_PORT", "5432"),
+            "CONN_MAX_AGE": int(os.getenv("POSTGRES_CONN_MAX_AGE", "60")),
+            "OPTIONS": {
+                "sslmode": os.getenv("POSTGRES_SSLMODE", "prefer"),
+            },
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -148,10 +266,31 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Email verification
+EMAIL_BACKEND = os.getenv(
+    "DJANGO_EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").strip().lower() in {"1", "true", "yes", "on"}
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@patient-data.local")
+EMAIL_VERIFICATION_CODE_EXPIRY_MINUTES = int(
+    os.getenv("EMAIL_VERIFICATION_CODE_EXPIRY_MINUTES", "10")
+)
+EMAIL_VERIFICATION_CODE_LENGTH = int(os.getenv("EMAIL_VERIFICATION_CODE_LENGTH", "6"))
+EMAIL_VERIFICATION_MAX_ATTEMPTS = int(os.getenv("EMAIL_VERIFICATION_MAX_ATTEMPTS", "5"))
+
+# API audit trail
+AUDIT_LOG_ENABLED = _env_bool("DJANGO_AUDIT_LOG_ENABLED", True)
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+TEST_RUNNER = 'core.test_runner.CoreDiscoverRunner'
 
 
 # ربط ال اليوزر بال جانغو
